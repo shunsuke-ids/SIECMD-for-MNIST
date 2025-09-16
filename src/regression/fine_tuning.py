@@ -2,9 +2,30 @@ import os
 import pickle as pkl
 import argparse
 
+import tensorflow as tf
 import keras_cv
 from keras import models as km, layers as kl
 from keras.callbacks import ModelCheckpoint
+
+# GPU設定
+print("GPUの可用性を確認中...")
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        # GPUメモリの動的割り当てを有効化
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        
+        # Mixed precisionを有効化（トレーニング高速化のため）
+        policy = tf.keras.mixed_precision.Policy('mixed_float16')
+        tf.keras.mixed_precision.set_global_policy(policy)
+        
+        print(f"GPU {len(gpus)}台が利用可能です: {[gpu.name for gpu in gpus]}")
+        print("Mixed precision (float16) が有効化されました")
+    except RuntimeError as e:
+        print(f"GPU設定エラー: {e}")
+else:
+    print("GPU が見つかりません。CPUで実行します。")
 
 from src.DL.metrics import prediction_mean_deviation
 from src.preprocessing.handle_dataset import *
@@ -63,7 +84,8 @@ for i in range(0, args.n):
     h = kl.GlobalAveragePooling2D()(backbone.output)
     h = kl.Dense(1024, activation='relu')(h)
     h = kl.Dense(256, activation='relu')(h)
-    output = kl.Dense(2, activation=ACTIVATION)(h)
+    # Mixed precisionを使用する場合、出力層はfloat32にする
+    output = kl.Dense(2, activation=ACTIVATION, dtype='float32')(h)
 
     model = km.Model(backbone.input, output)
 

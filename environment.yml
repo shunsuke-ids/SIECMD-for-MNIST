@@ -1,0 +1,14 @@
+name: mnist-ml
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - tensorflow-gpu=2.15
+  - numpy=1.26.4
+  - scipy=1.11.4
+  - h5py
+  - pip
+  - pip:
+    - keras-cv==0.8.2
+    - opencv-python==4.8.1.78
