@@ -1,0 +1,70 @@
+#############################################
+# Python bytecode & build artifacts
+#############################################
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+*.egg
+
+#############################################
+# Virtual environment / package managers
+#############################################
+.env
+.venv
+venv/
+env/
+pip-wheel-metadata/
+
+#############################################
+# IDE / Editor / OS files
+#############################################
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+#############################################
+# TensorFlow / Keras model weights & checkpoints
+#############################################
+weights/
+*.keras
+*.h5
+checkpoint/
+*.ckpt
+*.ckpt.*
+
+#############################################
+# Logs / cache
+#############################################
+logs/
+*.log
+wandb/
+mlruns/
+cache/
+
+#############################################
+# Generated visualization artifacts
+#############################################
+mnist_circle_epoch_*.png
+mnist_circle_visualization.png
+
+#############################################
+# Jupyter
+#############################################
+.ipynb_checkpoints/
+
+#############################################
+# Misc
+#############################################
+tmp/
+*.tmp
+*.bak
+*.old
+
+# If you later want to version one specific weight file, remove 'weights/' above
+# and add a more specific pattern instead.
