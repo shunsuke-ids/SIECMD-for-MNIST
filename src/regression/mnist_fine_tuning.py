@@ -21,7 +21,6 @@ sys.path.insert(0, project_root)
 from src.DL.metrics import prediction_mean_deviation
 from src.DL.activation_functions import sigmoid_activation
 from src.DL.losses import linear_dist_squared_loss
-from src.regression.circular_operations import *
 from src.regression.format_gt import angles_2_unit_circle_points, points_2_angles, associated_points_on_circle
 
 
@@ -112,6 +111,48 @@ def get_digit_from_angle(angle, similarity_based=False):
     # 最も近い角度を見つける
     closest_angle = min(angle_to_digit.keys(), key=lambda x: min(abs(angle - x), abs(angle - x + 360), abs(angle - x - 360)))
     return angle_to_digit[closest_angle]
+
+
+def angle_to_label_with_tolerance(predicted_angle, true_angle, tolerance=18.0):
+    """
+    予測角度が真の角度から許容範囲内にあるかチェック
+    
+    Args:
+        predicted_angle: 予測された角度 (0-360)
+        true_angle: 真の角度 (0-360)
+        tolerance: 許容角度範囲 (デフォルト±18°)
+    
+    Returns:
+        bool: 許容範囲内ならTrue
+    """
+    # 円形距離を計算（0°と360°の境界を考慮）
+    diff = abs(predicted_angle - true_angle)
+    circular_diff = min(diff, 360 - diff)
+    
+    return circular_diff <= tolerance
+
+
+def calculate_angle_accuracy(predicted_angles, true_angles, tolerance=18.0):
+    """
+    角度予測の分類精度を計算（±tolerance度の許容範囲で）
+    
+    Args:
+        predicted_angles: 予測角度配列
+        true_angles: 正解角度配列  
+        tolerance: 許容角度範囲 (デフォルト±18°)
+    
+    Returns:
+        float: 精度 (0.0-1.0)
+    """
+    correct_count = 0
+    total_count = len(predicted_angles)
+    
+    for pred_angle, true_angle in zip(predicted_angles, true_angles):
+        if angle_to_label_with_tolerance(pred_angle, true_angle, tolerance):
+            correct_count += 1
+    
+    accuracy = correct_count / total_count if total_count > 0 else 0.0
+    return accuracy
 
 
 def visualize_digits_on_circle(x_test, y_test, predictions, angles_test, predicted_angles, num_samples=5, epoch=None):
@@ -259,6 +300,7 @@ def main():
     print('=' * 50)
     
     mean_deviations = np.zeros(args.runs, dtype=np.float32)
+    angle_accuracies = np.zeros(args.runs, dtype=np.float32)
     
     for run in range(args.runs):
         print(f'実行 {run + 1}/{args.runs}')
@@ -289,27 +331,20 @@ def main():
             verbose=1
         )
         
-        # 学習
-        if os.path.exists(checkpoint_path):
-            print(f'既存の重みを読み込み: {checkpoint_path}')
-            model.load_weights(checkpoint_path)
-        else:
-            print('学習開始...')
-            
-            # コールバック設定
-            callbacks = [checkpoint_callback]
-            if args.step_by_step:
-                vis_callback = EpochVisualizationCallback(x_test, angles_test, args.visualize_epochs, args.similarity_based)
-                callbacks.append(vis_callback)
-            
-            history = model.fit(
-                x_train, y_train,
-                epochs=args.epochs,
-                batch_size=args.batch_size,
-                validation_data=(x_val, y_val),
-                callbacks=callbacks,
-                verbose=1
-            )
+        # 常に新規学習（各 run を独立扱い）
+        print('学習開始... (fresh init)')
+        callbacks = [checkpoint_callback]
+        if args.step_by_step:
+            vis_callback = EpochVisualizationCallback(x_test, angles_test, args.visualize_epochs, args.similarity_based)
+            callbacks.append(vis_callback)
+        history = model.fit(
+            x_train, y_train,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            validation_data=(x_val, y_val),
+            callbacks=callbacks,
+            verbose=1
+        )
         
         # 予測と評価
         predictions = model.predict(x_test, verbose=0)
@@ -320,7 +355,12 @@ def main():
         deviation = prediction_mean_deviation(angles_test, predicted_angles)
         mean_deviations[run] = deviation
         
+        # 角度ベース分類精度計算（±18°許容）
+        angle_accuracy = calculate_angle_accuracy(predicted_angles, angles_test, tolerance=18.0)
+        angle_accuracies[run] = angle_accuracy
+        
         print(f'実行 {run + 1} の平均偏差: {deviation:.2f}°')
+        print(f'実行 {run + 1} の角度分類精度 (±18°): {angle_accuracy*100:.2f}%')
         print('-' * 30)
         
         # 最終結果の視覚化（段階的でない場合）
@@ -336,8 +376,13 @@ def main():
     final_mean = np.mean(mean_deviations)
     final_std = np.std(mean_deviations)
     
+    accuracy_mean = np.mean(angle_accuracies)
+    accuracy_std = np.std(angle_accuracies)
+    
     print(f'平均偏差: {final_mean:.2f} ± {final_std:.2f}°')
-    print(f'各実行の結果: {mean_deviations}')
+    print(f'角度分類精度 (±18°): {accuracy_mean*100:.2f} ± {accuracy_std*100:.2f}%')
+    print(f'各実行の偏差: {mean_deviations}')
+    print(f'各実行の精度: {[f"{a*100:.2f}%" for a in angle_accuracies]}')
     
     return final_mean, final_std
 
