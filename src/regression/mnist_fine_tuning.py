@@ -279,7 +279,7 @@ class EpochVisualizationCallback(callbacks.Callback):
 def main():
     parser = argparse.ArgumentParser(description='MNIST円形回帰学習')
     parser.add_argument('--epochs', '-e', type=int, default=20, help='学習エポック数')
-    parser.add_argument('--batch_size', '-b', type=int, default=32, help='バッチサイズ')
+    parser.add_argument('--batch_size', '-b', type=int, default=64, help='バッチサイズ')
     parser.add_argument('--runs', '-r', type=int, default=1, help='実験回数')
     parser.add_argument('--visualize_epochs', '-v', nargs='+', type=int, 
                        default=[1, 5, 10, 15, 20], help='可視化するエポック')
