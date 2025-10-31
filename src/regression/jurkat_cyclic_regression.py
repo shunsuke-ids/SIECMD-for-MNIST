@@ -35,6 +35,11 @@ except Exception:
 
 from keras import models as km, layers as kl, callbacks
 from keras.callbacks import ModelCheckpoint
+try:
+    from sklearn.metrics import confusion_matrix
+    _HAS_SKLEARN_METRICS = True
+except Exception:
+    _HAS_SKLEARN_METRICS = False
 
 # Add project root
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
@@ -153,6 +158,9 @@ def main():
     parser.add_argument('--image_size',type=int,default=66)
     parser.add_argument('--tolerance',type=float,default=None, help='If None, set to half inter-class spacing (180/7).')
     parser.add_argument('--seed',type=int,default=42)
+    parser.add_argument('--confmat', action='store_true', help='Compute and save confusion matrix for the test set of each fold/run (angles snapped to nearest center).')
+    parser.add_argument('--confmat_norm', choices=['none','true','pred','all'], default='none', help='Normalization for confusion matrix (sklearn).')
+    parser.add_argument('--out_dir', type=str, default='results/confusion_matrices/regression', help='Directory to save confusion matrices.')
     args = parser.parse_args()
 
     angle_mapping = build_angle_mapping()
@@ -213,6 +221,17 @@ def main():
             all_mean_dev.append(mean_dev); all_tol_acc.append(tol_acc)
             print(f'Fold {fold_num} mean deviation: {mean_dev:.2f}°  tolerance@±{args.tolerance:.2f}°: {tol_acc*100:.2f}%')
 
+            # Confusion matrix (snap predicted angles to nearest class center)
+            if args.confmat and _HAS_SKLEARN_METRICS:
+                pred_labels = [angle_to_label(a, angle_mapping) for a in pred_angles]
+                y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
+                norm = None if args.confmat_norm == 'none' else args.confmat_norm
+                cm = confusion_matrix(yidx_test, y_pred_idx, labels=list(range(len(PHASES7))), normalize=norm)
+                out_dir = Path(args.out_dir) / f'fold{fold_num}'
+                out_dir.mkdir(parents=True, exist_ok=True)
+                np.savetxt(out_dir / 'confusion_matrix.csv', cm, delimiter=',', fmt='%0.6f')
+                print(f'Confusion matrix saved to {out_dir / "confusion_matrix.csv"}')
+
         print('--- Summary ---')
         print(f'Mean deviation: {np.mean(all_mean_dev):.2f} ± {np.std(all_mean_dev):.2f}°')
         print(f'Tolerance accuracy (±{args.tolerance}°): {np.mean(all_tol_acc)*100:.2f} ± {np.std(all_tol_acc)*100:.2f}%')
@@ -239,6 +258,19 @@ def main():
             tol_acc = tolerance_accuracy(pred_angles, ate, tol=args.tolerance)
             all_mean_dev.append(mean_dev); all_tol_acc.append(tol_acc)
             print(f'Run {run+1} mean deviation: {mean_dev:.2f}°  tolerance@±{args.tolerance:.2f}°: {tol_acc*100:.2f}%')
+
+            if args.confmat and _HAS_SKLEARN_METRICS:
+                pred_labels = [angle_to_label(a, angle_mapping) for a in pred_angles]
+                y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
+                norm = None if args.confmat_norm == 'none' else args.confmat_norm
+                # Need true indices for test split
+                label_to_idx_local = {p:i for i,p in enumerate(PHASES7)}
+                yte_idx = np.array([label_to_idx_local[l] for l in lte], dtype=np.int32)
+                cm = confusion_matrix(yte_idx, y_pred_idx, labels=list(range(len(PHASES7))), normalize=norm)
+                out_dir = Path(args.out_dir) / f'run{run+1}'
+                out_dir.mkdir(parents=True, exist_ok=True)
+                np.savetxt(out_dir / 'confusion_matrix.csv', cm, delimiter=',', fmt='%0.6f')
+                print(f'Confusion matrix saved to {out_dir / "confusion_matrix.csv"}')
 
         print('--- Summary ---')
         print(f'Mean deviation: {np.mean(all_mean_dev):.2f} ± {np.std(all_mean_dev):.2f}°')

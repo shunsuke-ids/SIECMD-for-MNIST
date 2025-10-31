@@ -27,7 +27,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 
 try:
-    from sklearn.metrics import classification_report  # optional
+    from sklearn.metrics import classification_report, confusion_matrix  # optional
     _HAS_SKLEARN = True
 except Exception:
     _HAS_SKLEARN = False
@@ -114,6 +114,9 @@ def main():
     parser.add_argument('--image_size',type=int,default=66)
     parser.add_argument('--seed',type=int,default=42)
     parser.add_argument('--save_weights', action='store_true', help='Save best val_accuracy weights and load for test eval.')
+    parser.add_argument('--confmat', action='store_true', help='Compute and save confusion matrix for the test set of each fold/run.')
+    parser.add_argument('--confmat_norm', choices=['none','true','pred','all'], default='none', help='Normalization for confusion matrix (sklearn).')
+    parser.add_argument('--out_dir', type=str, default='results/confusion_matrices/classification', help='Directory to save confusion matrices.')
     args = parser.parse_args()
 
     print('=== Jurkat 7-class classification baseline ===')
@@ -122,9 +125,9 @@ def main():
     print(f'Limit per phase: {args.limit_per_phase}')
 
     all_cls_acc=[]
-    X, labels = load_ch3_manifest(limit_per_phase=args.limit_per_phase, image_size=args.image_size)
-    label_to_idx = {p:i for i,p in enumerate(PHASES7)}
-    y_all_idx = np.array([label_to_idx[l] for l in labels], dtype=np.int32)
+    X, labels = load_ch3_manifest(limit_per_phase=args.limit_per_phase, image_size=args.image_size) # X：画像データ、labels：対応するラベル
+    label_to_idx = {p:i for i,p in enumerate(PHASES7)} # ラベルを整数に変換する辞書
+    y_all_idx = np.array([label_to_idx[l] for l in labels], dtype=np.int32) # 整数のみの配列に変換
 
     if args.folds and args.folds > 1:
         print(f"Using stratified {args.folds}-fold cross-validation. 'runs' is ignored.")
@@ -170,6 +173,18 @@ def main():
                 y_pred_idx = np.argmax(probs, axis=1)
                 print('Classification report (last fold):\n')
                 print(classification_report(y_test, y_pred_idx, target_names=PHASES7, digits=4))
+
+            # Confusion matrix per fold
+            if args.confmat and _HAS_SKLEARN:
+                probs = model.predict(X_test, verbose=0)
+                y_pred_idx = np.argmax(probs, axis=1)
+                norm = None if args.confmat_norm == 'none' else args.confmat_norm
+                cm = confusion_matrix(y_test, y_pred_idx, labels=list(range(len(PHASES7))), normalize=norm)
+                # Save
+                out_dir = Path(args.out_dir) / f'fold{fold_num}'
+                out_dir.mkdir(parents=True, exist_ok=True)
+                np.savetxt(out_dir / 'confusion_matrix.csv', cm, delimiter=',', fmt='%0.6f')
+                print(f'Confusion matrix saved to {out_dir / "confusion_matrix.csv"}')
     else:
         for run in range(args.runs):
             print(f'Run {run+1}/{args.runs}')
@@ -206,6 +221,17 @@ def main():
                 y_pred_idx = np.argmax(probs, axis=1)
                 print('Classification report:\n')
                 print(classification_report(yte_idx, y_pred_idx, target_names=PHASES7, digits=4))
+
+            # Confusion matrix per run (single-split mode)
+            if args.confmat and _HAS_SKLEARN:
+                probs = model.predict(Xte, verbose=0)
+                y_pred_idx = np.argmax(probs, axis=1)
+                norm = None if args.confmat_norm == 'none' else args.confmat_norm
+                cm = confusion_matrix(yte_idx, y_pred_idx, labels=list(range(len(PHASES7))), normalize=norm)
+                out_dir = Path(args.out_dir) / f'run{run+1}'
+                out_dir.mkdir(parents=True, exist_ok=True)
+                np.savetxt(out_dir / 'confusion_matrix.csv', cm, delimiter=',', fmt='%0.6f')
+                print(f'Confusion matrix saved to {out_dir / "confusion_matrix.csv"}')
 
     print('--- Summary ---')
     n = args.folds if (args.folds and args.folds > 1) else args.runs

@@ -48,10 +48,35 @@ mlruns/
 cache/
 
 #############################################
+# Test / type-check / tooling caches
+#############################################
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+coverage.xml
+
+#############################################
 # Generated visualization artifacts
 #############################################
 mnist_circle_epoch_*.png
 mnist_circle_visualization.png
+
+#############################################
+# Project-generated results & figures
+#############################################
+# Regression / classification outputs
+src/regression/results/
+src/regression/figs/
+
+# Generic outputs at repo root (if created by scripts)
+results/
+figs/
+
+# Confusion matrices and plots (wherever they appear)
+**/confusion_matrix.csv
+**/confusion_matrix.png
 
 #############################################
 # Jupyter
