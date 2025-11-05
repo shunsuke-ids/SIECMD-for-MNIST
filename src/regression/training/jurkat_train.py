@@ -9,8 +9,10 @@ Usage:
     # Circular Regression (7-class on unit circle)
     python jurkat_train.py --task regression --epochs 20 --folds 5
 
-Dataset: Ch3 (brightfield) grayscale images, 7 phases
+Dataset: Ch3 (brightfield) 66x66 grayscale images, 7 phases
 Classes: G1, S, G2, Prophase, Metaphase, Anaphase, Telophase
+
+Note: To change angle spacing, modify ANGLE_START in build_angle_mapping()
 """
 import os
 import sys
@@ -18,15 +20,11 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-try:
-    from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
-    from sklearn.metrics import classification_report
-    _HAS_SKLEARN = True
-except Exception:
-    _HAS_SKLEARN = False
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+from sklearn.metrics import classification_report
 
 # Add project root
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 sys.path.insert(0, project_root)
 
 from src.DL.metrics import prediction_mean_deviation
@@ -67,33 +65,31 @@ def main():
     parser.add_argument('--runs', '-r', type=int, default=1)
     parser.add_argument('--folds', type=int, default=1,
                        help='If >1, perform stratified K-fold CV (runs is ignored)')
-    parser.add_argument('--limit_per_phase', type=int, default=None)
-    parser.add_argument('--image_size', type=int, default=66)
+    parser.add_argument('--limit_per_phase', type=int, default=None,
+                       help='Limit samples per phase for quick testing')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--save_weights', action='store_true')
     parser.add_argument('--confmat', action='store_true', help='Save confusion matrix')
     parser.add_argument('--confmat_norm', choices=['none', 'true', 'pred', 'all'], default='none')
     parser.add_argument('--out_dir', type=str, default='results/confusion_matrices')
-    # Regression-specific
-    parser.add_argument('--tolerance', type=float, default=None,
-                       help='Tolerance for regression (default: 180/7 degrees)')
     args = parser.parse_args()
+
+    # Constants
+    IMAGE_SIZE = 66  # Original Jurkat image size
+    TOLERANCE = 180.0 / 7.0  # Half of inter-class spacing (≈25.7°)
 
     is_regression = (args.task == 'regression')
     angle_mapping = build_angle_mapping() if is_regression else None
 
-    if is_regression and args.tolerance is None:
-        args.tolerance = 180.0 / 7.0
-
     print(f'=== Jurkat 7-class {args.task} ===')
     print(f'Phases: {PHASES7}')
-    print(f'Image size: {args.image_size}x{args.image_size}')
+    print(f'Image size: {IMAGE_SIZE}x{IMAGE_SIZE}')
     if is_regression:
         print(f'Angle mapping: {angle_mapping}')
-        print(f'Tolerance: ±{args.tolerance:.2f}°')
+        print(f'Tolerance: ±{TOLERANCE:.2f}°')
 
     # Load data
-    X, labels = load_jurkat_ch3_data(limit_per_phase=args.limit_per_phase, image_size=args.image_size)
+    X, labels = load_jurkat_ch3_data(limit_per_phase=args.limit_per_phase, image_size=IMAGE_SIZE)
     label_to_idx = get_label_to_index_mapping(PHASES7)
     y_all_idx = np.array([label_to_idx[l] for l in labels], dtype=np.int32)
 
@@ -102,11 +98,10 @@ def main():
 
     # Results storage
     all_results = []
+    all_tol_acc = []  # For regression tolerance accuracy
 
     # Cross-validation mode
     if args.folds and args.folds > 1:
-        if not _HAS_SKLEARN:
-            raise RuntimeError('scikit-learn required for K-fold CV')
         print(f'Using stratified {args.folds}-fold CV')
         skf = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=args.seed)
         fold_num = 0
@@ -133,12 +128,12 @@ def main():
                 ang_test = angles_all[test_idx]
                 ytr = angles_2_unit_circle_points(atr)
                 yval = angles_2_unit_circle_points(aval)
-                model = create_jurkat_regression_model(input_shape=(args.image_size, args.image_size, 1))
+                model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
                 model.compile(optimizer='adam', loss=linear_dist_squared_loss)
                 monitor, mode = 'val_loss', 'min'
             else:
                 ytr, yval = ytr_idx, yval_idx
-                model = create_jurkat_classification_model(input_shape=(args.image_size, args.image_size, 1),
+                model = create_jurkat_classification_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1),
                                                           num_classes=len(PHASES7))
                 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
                 monitor, mode = 'val_accuracy', 'max'
@@ -162,11 +157,12 @@ def main():
                 preds = associated_points_on_circle(preds)
                 pred_angles = points_2_angles(preds)
                 mean_dev = prediction_mean_deviation(ang_test, pred_angles)
-                tol_acc = tolerance_accuracy(pred_angles, ang_test, tol=args.tolerance)
+                tol_acc = tolerance_accuracy(pred_angles, ang_test, tol=TOLERANCE)
                 all_results.append(mean_dev)
-                print(f'Fold {fold_num}: deviation={mean_dev:.2f}°, tol_acc@±{args.tolerance:.2f}°={tol_acc*100:.2f}%')
+                all_tol_acc.append(tol_acc)
+                print(f'Fold {fold_num}: deviation={mean_dev:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%')
 
-                if args.confmat and _HAS_SKLEARN:
+                if args.confmat:
                     pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
                     y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
                     save_confusion_matrix(yidx_test, y_pred_idx, PHASES7,
@@ -176,13 +172,13 @@ def main():
                 all_results.append(test_acc)
                 print(f'Fold {fold_num}: accuracy={test_acc*100:.2f}%')
 
-                if fold_num == args.folds and _HAS_SKLEARN:
+                if fold_num == args.folds:
                     probs = model.predict(X_test, verbose=0)
                     y_pred_idx = np.argmax(probs, axis=1)
                     print('\nClassification report (last fold):')
                     print(classification_report(yidx_test, y_pred_idx, target_names=PHASES7, digits=4))
 
-                if args.confmat and _HAS_SKLEARN:
+                if args.confmat:
                     probs = model.predict(X_test, verbose=0)
                     y_pred_idx = np.argmax(probs, axis=1)
                     save_confusion_matrix(yidx_test, y_pred_idx, PHASES7,
@@ -201,7 +197,7 @@ def main():
                 ytr = angles_2_unit_circle_points(atr)
                 yval = angles_2_unit_circle_points(aval)
                 yte_idx = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
-                model = create_jurkat_regression_model(input_shape=(args.image_size, args.image_size, 1))
+                model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
                 model.compile(optimizer='adam', loss=linear_dist_squared_loss)
                 monitor, mode = 'val_loss', 'min'
             else:
@@ -209,7 +205,7 @@ def main():
                 ytr = np.array([label_to_idx[l] for l in ltr], dtype=np.int32)
                 yval = np.array([label_to_idx[l] for l in lval], dtype=np.int32)
                 yte_idx = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
-                model = create_jurkat_classification_model(input_shape=(args.image_size, args.image_size, 1),
+                model = create_jurkat_classification_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1),
                                                           num_classes=len(PHASES7))
                 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
                 monitor, mode = 'val_accuracy', 'max'
@@ -235,11 +231,12 @@ def main():
                 preds = associated_points_on_circle(preds)
                 pred_angles = points_2_angles(preds)
                 mean_dev = prediction_mean_deviation(ate, pred_angles)
-                tol_acc = tolerance_accuracy(pred_angles, ate, tol=args.tolerance)
+                tol_acc = tolerance_accuracy(pred_angles, ate, tol=TOLERANCE)
                 all_results.append(mean_dev)
+                all_tol_acc.append(tol_acc)
                 print(f'Run {run+1}: deviation={mean_dev:.2f}°, tol_acc={tol_acc*100:.2f}%')
 
-                if args.confmat and _HAS_SKLEARN:
+                if args.confmat:
                     pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
                     y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
                     save_confusion_matrix(yte_idx, y_pred_idx, PHASES7,
@@ -249,13 +246,13 @@ def main():
                 all_results.append(test_acc)
                 print(f'Run {run+1}: accuracy={test_acc*100:.2f}%')
 
-                if run == args.runs - 1 and _HAS_SKLEARN:
+                if run == args.runs - 1:
                     probs = model.predict(Xte, verbose=0)
                     y_pred_idx = np.argmax(probs, axis=1)
                     print('\nClassification report:')
                     print(classification_report(yte_idx, y_pred_idx, target_names=PHASES7, digits=4))
 
-                if args.confmat and _HAS_SKLEARN:
+                if args.confmat:
                     probs = model.predict(Xte, verbose=0)
                     y_pred_idx = np.argmax(probs, axis=1)
                     save_confusion_matrix(yte_idx, y_pred_idx, PHASES7,
@@ -266,6 +263,7 @@ def main():
     n = args.folds if (args.folds and args.folds > 1) else args.runs
     if is_regression:
         print(f'Mean deviation: {np.mean(all_results):.2f} ± {np.std(all_results):.2f}° (n={n})')
+        print(f'Tolerance accuracy (±{TOLERANCE:.2f}°): {np.mean(all_tol_acc)*100:.2f} ± {np.std(all_tol_acc)*100:.2f}% (n={n})')
     else:
         print(f'Accuracies: {[f"{a*100:.2f}%" for a in all_results]}')
         print(f'Mean accuracy: {np.mean(all_results)*100:.2f} ± {np.std(all_results)*100:.2f}% (n={n})')
