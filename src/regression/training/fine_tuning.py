@@ -1,3 +1,21 @@
+#!/usr/bin/env python3
+"""
+Fine-tuning script for circular regression using pre-trained models.
+
+Purpose:
+    Transfer learning approach using pre-trained backbones (EfficientNetV2, ResNet, YOLO)
+    for circular regression tasks. This script demonstrates fine-tuning with frozen/unfrozen
+    backbone layers.
+
+Usage:
+    python fine_tuning.py <root_dir> <data_dir> <dataset> [options]
+
+Example:
+    python fine_tuning.py /path/to/project /path/to/data mydataset --epochs 10
+
+Note:
+    This is distinct from probing.py which uses a simple CNN from scratch.
+"""
 import os
 import pickle as pkl
 import argparse
@@ -11,7 +29,7 @@ from src.preprocessing.handle_dataset import *
 from src.DL.activation_functions import *
 from src.DL.losses import *
 
-from src.regression.format_gt import *
+from src.regression.utils.format_gt import *
 from src.regression.circular_operations import *
 
 parser = argparse.ArgumentParser(description='Train circular regression model')

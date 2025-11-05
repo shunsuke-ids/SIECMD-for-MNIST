@@ -1,3 +1,22 @@
+#!/usr/bin/env python3
+"""
+Probing (linear evaluation) script for circular regression using simple CNN.
+
+Purpose:
+    Train a simple CNN from scratch for circular regression tasks using
+    cyclic activation and loss functions. Includes Test-Time Augmentation (TTA)
+    for improved predictions.
+
+Usage:
+    python probing.py <root_dir> <data_dir> <dataset> [options]
+
+Example:
+    python probing.py /path/to/project /path/to/data mydataset --epochs 50
+
+Note:
+    This is distinct from fine_tuning.py which uses pre-trained models.
+    TTA with n_rotations=4 is applied during inference for robustness.
+"""
 import argparse
 import os
 import pickle as pkl

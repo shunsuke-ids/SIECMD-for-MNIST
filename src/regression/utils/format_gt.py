@@ -184,3 +184,43 @@ def areas_to_points(samples, n_areas):
         angle = area_size * samples[i] + area_size / 2
         new_samples[i] = angle_2_unit_circle_point(angle)
     return new_samples
+
+
+def build_angle_mapping_equal(labels, start_angle=0):
+    """
+    Build equal-spaced angle mapping for circular regression.
+
+    Args:
+        labels: List of class labels
+        start_angle: Starting angle (default 0)
+
+    Returns:
+        Dictionary mapping labels to angles
+    """
+    n_classes = len(labels)
+    angle_step = 360.0 / n_classes
+    return {label: (i * angle_step + start_angle) % 360.0 for i, label in enumerate(labels)}
+
+
+def angle_to_label_with_mapping(angle: float, angle_mapping: dict) -> str:
+    """
+    Find the closest label for a given angle using circular distance.
+
+    Args:
+        angle: Predicted angle (0-360)
+        angle_mapping: Dictionary mapping labels to angles
+
+    Returns:
+        Closest label
+    """
+    best = None
+    best_dist = 999.0
+
+    for lbl, ang in angle_mapping.items():
+        diff = abs(angle - ang)
+        diff = min(diff, 360.0 - diff)  # Circular distance
+        if diff < best_dist:
+            best_dist = diff
+            best = lbl
+
+    return best
