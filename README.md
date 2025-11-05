@@ -21,3 +21,58 @@ This directory contains implementations of SIECMD regression task. The files [fi
 
 ### /weights
 This is the default weight-file save directory. Files are saved as *.keras* files and can be loaded to keras models (see example [fine_tuning.py](./src/regression/fine_tuning.py)). 
+
+## プロジェクト早見表（日本語）: ファイル構成と役割
+
+リポジトリの現状の構成と、主要ファイルの役割を日本語でまとめます。
+
+トップレベル
+- `requirements.txt` — 実行に必要なライブラリ（Keras/TensorFlow, scikit-learn, OpenCV など）
+- `environment.yml` — Conda 環境の定義（任意）
+- `setup_gpu_env.sh` — GPU 環境セットアップ用の補助スクリプト
+- `weights/` — 学習済みチェックポイント（`.keras`）の保存先
+- `figs/` — 図の保存先（git ignore 対象）
+
+DL 基盤（`src/DL` と `src/preprocessing`）
+- `src/DL/activation_functions.py` — 円周（角度）回りの出力に対応するカスタム活性化
+- `src/DL/losses.py` — 円環回帰向け損失（例: 線形距離二乗）
+- `src/DL/metrics.py` — 評価ユーティリティ（平均角度偏差など）
+- `src/DL/models.py` — プロービング等で用いるモデル定義
+- `src/preprocessing/augment.py` — 学習時・テスト時（TTA）の拡張
+- `src/preprocessing/handle_dataset.py` — 前処理・分割などのヘルパ
+
+回帰/分類ワークフロー（`src/regression`）
+- `jurkat_cyclic_regression.py` — Jurkat（CellCycle）7 クラスの円環回帰
+	- Ch3（明視野）画像を読み込み、7 フェーズを単位円に等間隔マッピング
+	- 指標: 平均角度偏差、トレランス精度（±180/7°）
+	- 予測角を最近傍のクラス中心にスナップして混同行列（CSV）出力も可能
+- `jurkat_classification_baseline.py` — 同一バックボーンの 7 クラス分類ベースライン
+	- 指標: 分類精度。fold ごとに混同行列（CSV）出力対応
+- `plot_confusion_matrices.py` — 混同行列 CSV をヒートマップ PNG に可視化
+	- `--root` 配下を探索し `confusion_matrix.csv` を見つけて図化、`--out_dir` に保存
+- `aggregate_confusion_matrics.py` — fold ごとの混同行列を合算し 1 枚に集約
+	- `<root>/fold*/confusion_matrix.csv` を読み込み、合計（raw）と正規化版を保存
+	- 併せて `metrics.json`（total/correct/errors/accuracy, 入力ファイル一覧）を出力
+	- オプション: `--normalize {none,true,pred,all}`
+- `format_gt.py` — 角度↔点 変換などの幾何ヘルパ
+- `fine_tuning.py`, `probing.py` — SIECMD の学習/評価例
+- `prepare_dataset.py` — データ整形ユーティリティ
+- `jurkat_visualize.py` — 重み/特徴の可視化補助
+- `mnist_classification.py`, `mnist_fine_tuning.py` — MNIST 向けの参考スクリプト
+- `results/`, `figs/`, `weights/` — 実行結果の保存先（git ignore）
+
+出力（混同行列関連）
+- 各 fold の混同行列（非正規化推奨）:
+	- `src/regression/results/confmats_none/classification/fold*/confusion_matrix.csv`
+	- `src/regression/results/confmats_none/regression/fold*/confusion_matrix.csv`
+- 合算（`aggregate_confusion_matrics.py` の出力）:
+	- `.../combined/confusion_matrix_raw.csv` — 各 fold の生カウント合計
+	- `.../combined/confusion_matrix.csv` — 正規化モードに応じて規格化
+	- `.../combined/metrics.json` — 件数・精度等の集約メタ情報
+- PNG 化（`plot_confusion_matrices.py`）:
+	- `src/regression/figs/confmats_none/{classification,regression}/fold*/confusion_matrix.png`
+	- 合算版は対応する `.../combined/` 配下に出力
+
+備考
+- 生成物（results, figs, weights, cache 等）は `.gitignore` 済みです。
+- README 内の一部は原著 SIECMD 論文の例に基づく記述があり、Jurkat 向けの 7 フェーズ実験用スクリプトは追加分です。
