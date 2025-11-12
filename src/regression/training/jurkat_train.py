@@ -34,7 +34,7 @@ from src.regression.utils.format_gt import (
     build_angle_mapping_equal, angle_to_label_with_mapping
 )
 from src.regression.utils.data_loaders import load_jurkat_ch3_data, get_label_to_index_mapping, PHASES7
-from src.regression.utils.model_builders import create_jurkat_classification_model, create_jurkat_regression_model
+from src.regression.utils.model_builders import create_jurkat_classification_model, create_jurkat_regression_model, create_jurkat_multitask_model
 from src.regression.utils.training_utils import setup_checkpoint, save_confusion_matrix, tolerance_accuracy
 
 
@@ -89,12 +89,35 @@ def prepare_split_data(use_cv, iteration, X, labels, y_all_idx, angles_all, is_r
 
 
 def run_single_iteration(Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test,
-                        is_regression, label_to_idx, angle_mapping, args, fold_name, tolerance, phases):
+                        is_regression, is_multitask, label_to_idx, angle_mapping, args, fold_name, tolerance, phases):
     """Execute training and evaluation for a single iteration"""
     IMAGE_SIZE, num_classes = 66, len(phases)
 
     # Prepare targets and model
-    if is_regression:
+    if is_multitask:
+        # マルチタスク: 回帰と分類の両方
+        ytr_circle = angles_2_unit_circle_points(labels_tr)
+        yval_circle = angles_2_unit_circle_points(labels_val)
+        ytr_idx = np.array([label_to_idx[angle_to_label_with_mapping(a, angle_mapping)] for
+a in labels_tr], dtype=np.int32)
+        yval_idx = np.array([label_to_idx[angle_to_label_with_mapping(a, angle_mapping)] for
+a in labels_val], dtype=np.int32)
+
+        ytr = {'regression': ytr_circle, 'classification': ytr_idx}
+        yval = {'regression': yval_circle, 'classification': yval_idx}
+
+        model = create_jurkat_multitask_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1),
+num_classes=num_classes)
+        model.compile(
+            optimizer='adam',
+            loss={'regression': cos_similarity_loss, 'classification':
+'sparse_categorical_crossentropy'},
+            loss_weights={'regression': 1.0, 'classification': 1.0},
+            metrics={'classification': ['accuracy']}
+        )
+        monitor, mode = 'val_loss', 'min'
+
+    elif is_regression:
         ytr, yval = angles_2_unit_circle_points(labels_tr), angles_2_unit_circle_points(labels_val)
         model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
         model.compile(optimizer='adam', loss=cos_similarity_loss)
@@ -110,14 +133,39 @@ def run_single_iteration(Xtr, Xval, X_test, labels_tr, labels_val, test_target, 
     callbacks = []
     if args.save_weights:
         subdir = 'jurkat_7cls' if is_regression else 'jurkat_7cls_cls'
-        mc = setup_checkpoint(f'weights/{subdir}', f'{fold_name}.keras',
-                             monitor=monitor, mode=mode, save_weights_only=(not is_regression))
+        if is_multitask:
+            subdir = 'jurkat_7cls_multitask'
+        mc = setup_checkpoint(f'weights/{subdir}', f'{fold_name}.keras', monitor=monitor, mode=mode, save_weights_only=(not is_regression and not is_multitask))
         callbacks.append(mc)
-    model.fit(Xtr, ytr, validation_data=(Xval, yval), epochs=args.epochs,
-             batch_size=args.batch_size, callbacks=callbacks, verbose=1)
+    model.fit(Xtr, ytr, validation_data=(Xval, yval), epochs=args.epochs, batch_size=args.batch_size, callbacks=callbacks, verbose=1)
 
     # Evaluate
-    if is_regression:
+    if is_multitask:
+        # マルチタスク評価
+        preds = model.predict(X_test, verbose=0)
+        preds_circle = preds[0]  # 回帰出力
+        preds_class = preds[1]   # 分類出力
+
+        # 回帰評価
+        preds_circle = associated_points_on_circle(preds_circle)
+        pred_angles = points_2_angles(preds_circle)
+        mean_dev = prediction_mean_deviation(test_target, pred_angles)
+        tol_acc = tolerance_accuracy(pred_angles, test_target, tol=tolerance)
+
+        # 分類評価
+        y_pred_idx = np.argmax(preds_class, axis=1)
+        from sklearn.metrics import accuracy_score
+        cls_acc = accuracy_score(yidx_test, y_pred_idx)
+
+        if args.confmat:
+            pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
+            y_pred_idx_reg = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
+            save_confusion_matrix(yidx_test, y_pred_idx_reg, phases, f'{args.out_dir}/multitask_regression', args.confmat_norm, fold_name)
+            save_confusion_matrix(yidx_test, y_pred_idx, phases, f'{args.out_dir}/multitask_classification', args.confmat_norm, fold_name)
+
+        return (mean_dev, cls_acc), tol_acc, model
+
+    elif is_regression:
         preds = associated_points_on_circle(model.predict(X_test, verbose=0))
         pred_angles = points_2_angles(preds)
         result = prediction_mean_deviation(test_target, pred_angles)
@@ -125,21 +173,18 @@ def run_single_iteration(Xtr, Xval, X_test, labels_tr, labels_val, test_target, 
         if args.confmat:
             pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
             y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
-            save_confusion_matrix(yidx_test, y_pred_idx, phases, f'{args.out_dir}/regression',
-                                args.confmat_norm, fold_name)
+            save_confusion_matrix(yidx_test, y_pred_idx, phases, f'{args.out_dir}/regression', args.confmat_norm, fold_name)
         return result, tol_acc, model
     else:
         _, result = model.evaluate(X_test, test_target, verbose=0)
         if args.confmat:
             y_pred_idx = np.argmax(model.predict(X_test, verbose=0), axis=1)
-            save_confusion_matrix(test_target, y_pred_idx, phases, f'{args.out_dir}/classification',
-                                args.confmat_norm, fold_name)
+            save_confusion_matrix(test_target, y_pred_idx, phases, f'{args.out_dir}/classification', args.confmat_norm, fold_name)
         return result, None, model
 
-
 def main():
-    parser = argparse.ArgumentParser(description='Jurkat unified training (classification/regression)')
-    parser.add_argument('--task', choices=['classification', 'regression'], required=True,
+    parser = argparse.ArgumentParser(description='Jurkat unified training (classification/regression/multitask)')
+    parser.add_argument('--task', choices=['classification', 'regression', 'multitask'], required=True,
                        help='Task type: classification (softmax) or regression (circular)')
     parser.add_argument('--epochs', '-e', type=int, default=20)
     parser.add_argument('--batch_size', '-b', type=int, default=64)
@@ -160,7 +205,8 @@ def main():
     TOLERANCE = 180.0 / 7.0  # Half of inter-class spacing (≈25.7°)
 
     is_regression = (args.task == 'regression')
-    angle_mapping = build_angle_mapping() if is_regression else None
+    is_multitask = (args.task == 'multitask')
+    angle_mapping = build_angle_mapping() if (is_regression or is_multitask) else None
 
     print(f'=== Jurkat 7-class {args.task} ===')
     print(f'Phases: {PHASES7}')
@@ -177,7 +223,7 @@ def main():
     # 文字列を整数に
     y_all_idx = np.array([label_to_idx[l] for l in labels], dtype=np.int32)
 
-    if is_regression:
+    if is_regression or is_multitask:
         # 角度だけの配列を作成
         angles_all = np.array([angle_mapping[l] for l in labels], dtype=np.float32)
 
@@ -212,8 +258,8 @@ def main():
         # test_target: テスト用のターゲット（角度 or クラスインデックス）
         # yidx_test: テスト用のクラスインデックス（confusion matrix用）
         Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test = prepare_split_data(
-            use_cv, iteration, X, labels, y_all_idx, angles_all if is_regression else None,
-            is_regression, label_to_idx, angle_mapping, args.seed,
+            use_cv, iteration, X, labels, y_all_idx, angles_all if (is_regression or is_multitask) else None,
+            is_regression or is_multitask, label_to_idx, angle_mapping, args.seed,
             train_idx=split_indices[0] if use_cv else None,
             test_idx=split_indices[1] if use_cv else None
         )
@@ -224,7 +270,7 @@ def main():
         # classificationの場合: result = 精度、tol_acc = None
         result, tol_acc, model = run_single_iteration(
             Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test,
-            is_regression, label_to_idx, angle_mapping, args, fold_name, TOLERANCE, PHASES7
+            is_regression, is_multitask, label_to_idx, angle_mapping, args, fold_name, TOLERANCE, PHASES7
         )
 
         all_results.append(result)
@@ -232,7 +278,10 @@ def main():
             all_tol_acc.append(tol_acc)
 
         # Print results
-        if is_regression:
+        if is_multitask:
+            mean_dev, cls_acc = result
+            print(f'{fold_name}: regression_dev={mean_dev:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%, classification_acc={cls_acc*100:.2f}%')
+        elif is_regression:
             print(f'{fold_name}: deviation={result:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%')
         else:
             print(f'{fold_name}: accuracy={result*100:.2f}%')
@@ -244,13 +293,18 @@ def main():
     # Summary
     print('\n=== Summary ===')
     n = args.folds if (args.folds and args.folds > 1) else args.runs
-    if is_regression:
-        print(f'Mean deviation: {np.mean(all_results):.2f} ± {np.std(all_results):.2f}° (n={n})')
-        print(f'Tolerance accuracy (±{TOLERANCE:.2f}°): {np.mean(all_tol_acc)*100:.2f} ± {np.std(all_tol_acc)*100:.2f}% (n={n})')
+    # Print results
+    if is_multitask:
+        mean_dev, cls_acc = result
+        print(f'{fold_name}: regression_dev={mean_dev:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%, classification_acc={cls_acc*100:.2f}%')
+    elif is_regression:
+        print(f'{fold_name}: deviation={result:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%')
     else:
-        print(f'Accuracies: {[f"{a*100:.2f}%" for a in all_results]}')
-        print(f'Mean accuracy: {np.mean(all_results)*100:.2f} ± {np.std(all_results)*100:.2f}% (n={n})')
-
+        print(f'{fold_name}: accuracy={result*100:.2f}%')
+        if iteration == n_iterations:
+            y_pred_idx = np.argmax(model.predict(X_test, verbose=0), axis=1)
+            print('\nClassification report:')
+            print(classification_report(test_target, y_pred_idx, target_names=PHASES7, digits=4))
 
 if __name__ == '__main__':
     main()

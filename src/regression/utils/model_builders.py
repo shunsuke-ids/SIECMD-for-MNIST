@@ -163,3 +163,32 @@ def create_mnist_regression_model(input_shape=(28, 28, 1), activation=None):
     inputs, features = create_mnist_backbone(input_shape)
     outputs = add_regression_head(features, activation)
     return km.Model(inputs, outputs)
+
+def create_jurkat_multitask_model(input_shape=(66, 66, 1), num_classes=7):
+    """
+    Create multi-task model with both regression and classification outputs.
+    Uses the same backbone as single-task models.
+    
+    Args:
+        input_shape: Input image shape
+        num_classes: Number of classes for classification
+        
+    Returns:
+        Model with two outputs: 'regression' and 'classification'
+    """
+    from src.DL.activation_functions import sigmoid_activation
+
+    # 既存のバックボーンを使用
+    inputs, features = create_jurkat_backbone(input_shape)
+
+    # 回帰ヘッド（単位円上の2D座標、カスタムシグモイド活性化）
+    regression_out = add_regression_head(features, sigmoid_activation)
+    regression_out = kl.Lambda(lambda x: x, name='regression')(regression_out)
+
+    # 分類ヘッド（7クラスのsoftmax）
+    classification_out = add_classification_head(features, num_classes)
+    classification_out = kl.Lambda(lambda x: x, name='classification')(classification_out)
+
+    model = km.Model(inputs=inputs, outputs=[regression_out, classification_out])
+
+    return model
