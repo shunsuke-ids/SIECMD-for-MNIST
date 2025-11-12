@@ -28,7 +28,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..
 sys.path.insert(0, project_root)
 
 from src.DL.metrics import prediction_mean_deviation
-from src.DL.losses import linear_dist_squared_loss
+from src.DL.losses import linear_dist_squared_loss, cos_similarity_loss
 from src.regression.utils.format_gt import (
     points_2_angles, associated_points_on_circle, angles_2_unit_circle_points,
     build_angle_mapping_equal, angle_to_label_with_mapping
@@ -129,7 +129,7 @@ def main():
                 ytr = angles_2_unit_circle_points(atr)
                 yval = angles_2_unit_circle_points(aval)
                 model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
-                model.compile(optimizer='adam', loss=linear_dist_squared_loss)
+                model.compile(optimizer='adam', loss=cos_similarity_loss)
                 monitor, mode = 'val_loss', 'min'
             else:
                 ytr, yval = ytr_idx, yval_idx
@@ -198,7 +198,7 @@ def main():
                 yval = angles_2_unit_circle_points(aval)
                 yte_idx = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
                 model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
-                model.compile(optimizer='adam', loss=linear_dist_squared_loss)
+                model.compile(optimizer='adam', loss=cos_similarity_loss)
                 monitor, mode = 'val_loss', 'min'
             else:
                 (Xtr, Xval, Xte), (ltr, lval, lte) = train_val_test_split_simple(X, labels, seed=args.seed + run)

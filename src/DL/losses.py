@@ -85,3 +85,17 @@ def eucl_dist_loss(y_true, y_pred):
     return K.sqrt(K.sum(K.square(y_pred - y_true), axis=-1))
 
 
+def cos_similarity_loss(y_true, y_pred):
+    '''
+    Cosine similarity loss, can be used in context of circular regression for points on unit circle
+    :param y_true: GT
+    :param y_pred: Prediction
+    :return: $\delta_{cos\_sim}(\Vec{x}, \Vec{y}) \ = \ 1 - \frac{\Vec{x} \cdot \Vec{y}}{||\Vec{x}||_2 ||\Vec{y}||_2}$
+    '''
+
+    # 長さが1になるように正規化
+    y_true = tf.math.l2_normalize(y_true, axis=-1)
+    y_pred = tf.math.l2_normalize(y_pred, axis=-1)
+
+    # 長さ1のベクトル同士の内積を計算→ コサイン類似度を取得
+    return 1 - tf.reduce_sum(tf.multiply(y_true, y_pred), axis=-1)
