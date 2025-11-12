@@ -56,6 +56,87 @@ def train_val_test_split_simple(X, labels, val_ratio=0.15, test_ratio=0.15, seed
     return (X[train_idx], X[val_idx], X[test_idx]), (labels[train_idx], labels[val_idx], labels[test_idx])
 
 
+def prepare_split_data(use_cv, iteration, X, labels, y_all_idx, angles_all, is_regression,
+                       label_to_idx, angle_mapping, seed, train_idx=None, test_idx=None):
+    """Prepare train/val/test splits for either CV or simple run mode"""
+    if use_cv:
+        X_train_full, X_test = X[train_idx], X[test_idx]
+        yidx_train_full, yidx_test = y_all_idx[train_idx], y_all_idx[test_idx]
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.15, random_state=seed + iteration)
+        tr_idx, val_idx = next(sss.split(X_train_full, yidx_train_full))
+        Xtr, Xval = X_train_full[tr_idx], X_train_full[val_idx]
+
+        if is_regression:
+            ang_train_full = angles_all[train_idx]
+            labels_tr, labels_val = ang_train_full[tr_idx], ang_train_full[val_idx]
+            test_target = angles_all[test_idx]
+        else:
+            labels_tr, labels_val = labels[train_idx][tr_idx], labels[train_idx][val_idx]
+            test_target, yidx_test = yidx_test, yidx_test
+    else:
+        (Xtr, Xval, X_test), (ltr, lval, lte) = train_val_test_split_simple(X, labels, seed=seed + iteration)
+        if is_regression:
+            labels_tr = np.array([angle_mapping[l] for l in ltr], dtype=np.float32)
+            labels_val = np.array([angle_mapping[l] for l in lval], dtype=np.float32)
+            test_target = np.array([angle_mapping[l] for l in lte], dtype=np.float32)
+            yidx_test = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
+        else:
+            labels_tr, labels_val = ltr, lval
+            test_target = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
+            yidx_test = test_target
+
+    return Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test
+
+
+def run_single_iteration(Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test,
+                        is_regression, label_to_idx, angle_mapping, args, fold_name, tolerance, phases):
+    """Execute training and evaluation for a single iteration"""
+    IMAGE_SIZE, num_classes = 66, len(phases)
+
+    # Prepare targets and model
+    if is_regression:
+        ytr, yval = angles_2_unit_circle_points(labels_tr), angles_2_unit_circle_points(labels_val)
+        model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
+        model.compile(optimizer='adam', loss=cos_similarity_loss)
+        monitor, mode = 'val_loss', 'min'
+    else:
+        ytr = np.array([label_to_idx[l] for l in labels_tr], dtype=np.int32)
+        yval = np.array([label_to_idx[l] for l in labels_val], dtype=np.int32)
+        model = create_jurkat_classification_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1), num_classes=num_classes)
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        monitor, mode = 'val_accuracy', 'max'
+
+    # Train
+    callbacks = []
+    if args.save_weights:
+        subdir = 'jurkat_7cls' if is_regression else 'jurkat_7cls_cls'
+        mc = setup_checkpoint(f'weights/{subdir}', f'{fold_name}.keras',
+                             monitor=monitor, mode=mode, save_weights_only=(not is_regression))
+        callbacks.append(mc)
+    model.fit(Xtr, ytr, validation_data=(Xval, yval), epochs=args.epochs,
+             batch_size=args.batch_size, callbacks=callbacks, verbose=1)
+
+    # Evaluate
+    if is_regression:
+        preds = associated_points_on_circle(model.predict(X_test, verbose=0))
+        pred_angles = points_2_angles(preds)
+        result = prediction_mean_deviation(test_target, pred_angles)
+        tol_acc = tolerance_accuracy(pred_angles, test_target, tol=tolerance)
+        if args.confmat:
+            pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
+            y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
+            save_confusion_matrix(yidx_test, y_pred_idx, phases, f'{args.out_dir}/regression',
+                                args.confmat_norm, fold_name)
+        return result, tol_acc, model
+    else:
+        _, result = model.evaluate(X_test, test_target, verbose=0)
+        if args.confmat:
+            y_pred_idx = np.argmax(model.predict(X_test, verbose=0), axis=1)
+            save_confusion_matrix(test_target, y_pred_idx, phases, f'{args.out_dir}/classification',
+                                args.confmat_norm, fold_name)
+        return result, None, model
+
+
 def main():
     parser = argparse.ArgumentParser(description='Jurkat unified training (classification/regression)')
     parser.add_argument('--task', choices=['classification', 'regression'], required=True,
@@ -89,174 +170,76 @@ def main():
         print(f'Tolerance: ±{TOLERANCE:.2f}°')
 
     # Load data
+    # Xには画像データ、labelsには対応する位相ラベルが入る
     X, labels = load_jurkat_ch3_data(limit_per_phase=args.limit_per_phase, image_size=IMAGE_SIZE)
+    # 移相ラベルを整数に変換
     label_to_idx = get_label_to_index_mapping(PHASES7)
+    # 文字列を整数に
     y_all_idx = np.array([label_to_idx[l] for l in labels], dtype=np.int32)
 
     if is_regression:
+        # 角度だけの配列を作成
         angles_all = np.array([angle_mapping[l] for l in labels], dtype=np.float32)
 
-    # Results storage
-    all_results = []
-    all_tol_acc = []  # For regression tolerance accuracy
+    # Determine iteration mode
+    all_results, all_tol_acc = [], []
+    use_cv = args.folds and args.folds > 1
+    n_iterations = args.folds if use_cv else args.runs
 
-    # Cross-validation mode
-    if args.folds and args.folds > 1:
+    if use_cv:
         print(f'Using stratified {args.folds}-fold CV')
+        # 層化KFoldオブジェクトの作成
         skf = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=args.seed)
-        fold_num = 0
-
-        for train_idx, test_idx in skf.split(X, y_all_idx):
-            fold_num += 1
-            print(f'\nFold {fold_num}/{args.folds}')
-
-            X_train_full, X_test = X[train_idx], X[test_idx]
-            yidx_train_full, yidx_test = y_all_idx[train_idx], y_all_idx[test_idx]
-
-            # Stratified val split
-            sss = StratifiedShuffleSplit(n_splits=1, test_size=0.15, random_state=args.seed + fold_num)
-            tr_idx, val_idx = next(sss.split(X_train_full, yidx_train_full))
-            Xtr, Xval = X_train_full[tr_idx], X_train_full[val_idx]
-            ytr_idx, yval_idx = yidx_train_full[tr_idx], yidx_train_full[val_idx]
-
-            print(f'Data: train={Xtr.shape}, val={Xval.shape}, test={X_test.shape}')
-
-            # Prepare targets based on task
-            if is_regression:
-                ang_train_full = angles_all[train_idx]
-                atr, aval = ang_train_full[tr_idx], ang_train_full[val_idx]
-                ang_test = angles_all[test_idx]
-                ytr = angles_2_unit_circle_points(atr)
-                yval = angles_2_unit_circle_points(aval)
-                model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
-                model.compile(optimizer='adam', loss=cos_similarity_loss)
-                monitor, mode = 'val_loss', 'min'
-            else:
-                ytr, yval = ytr_idx, yval_idx
-                model = create_jurkat_classification_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1),
-                                                          num_classes=len(PHASES7))
-                model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-                monitor, mode = 'val_accuracy', 'max'
-
-            # Checkpoint
-            callbacks = []
-            if args.save_weights:
-                subdir = 'jurkat_7cls' if is_regression else 'jurkat_7cls_cls'
-                mc = setup_checkpoint(f'weights/{subdir}', f'fold{fold_num}.keras',
-                                     monitor=monitor, mode=mode, save_weights_only=(not is_regression))
-                callbacks.append(mc)
-
-            # Train
-            model.fit(Xtr, ytr, validation_data=(Xval, yval),
-                     epochs=args.epochs, batch_size=args.batch_size,
-                     callbacks=callbacks, verbose=1)
-
-            # Evaluate
-            if is_regression:
-                preds = model.predict(X_test, verbose=0)
-                preds = associated_points_on_circle(preds)
-                pred_angles = points_2_angles(preds)
-                mean_dev = prediction_mean_deviation(ang_test, pred_angles)
-                tol_acc = tolerance_accuracy(pred_angles, ang_test, tol=TOLERANCE)
-                all_results.append(mean_dev)
-                all_tol_acc.append(tol_acc)
-                print(f'Fold {fold_num}: deviation={mean_dev:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%')
-
-                if args.confmat:
-                    pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
-                    y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
-                    save_confusion_matrix(yidx_test, y_pred_idx, PHASES7,
-                                        f'{args.out_dir}/regression', args.confmat_norm, f'fold{fold_num}')
-            else:
-                test_loss, test_acc = model.evaluate(X_test, yidx_test, verbose=0)
-                all_results.append(test_acc)
-                print(f'Fold {fold_num}: accuracy={test_acc*100:.2f}%')
-
-                if fold_num == args.folds:
-                    probs = model.predict(X_test, verbose=0)
-                    y_pred_idx = np.argmax(probs, axis=1)
-                    print('\nClassification report (last fold):')
-                    print(classification_report(yidx_test, y_pred_idx, target_names=PHASES7, digits=4))
-
-                if args.confmat:
-                    probs = model.predict(X_test, verbose=0)
-                    y_pred_idx = np.argmax(probs, axis=1)
-                    save_confusion_matrix(yidx_test, y_pred_idx, PHASES7,
-                                        f'{args.out_dir}/classification', args.confmat_norm, f'fold{fold_num}')
-
-    # Simple runs mode
+        # (1, (train_idx, test_idx))   Fold 1 
+        # (2, (train_idx, test_idx))   Fold 2
+        # (3, (train_idx, test_idx))   Fold 3
+        # ...のように分割する
+        splits = list(enumerate(skf.split(X, y_all_idx), 1))
     else:
-        for run in range(args.runs):
-            print(f'\nRun {run+1}/{args.runs}')
+        # (1, None),
+        # (2, None),
+        # ...
+        splits = [(i + 1, None) for i in range(args.runs)]
 
-            if is_regression:
-                (Xtr, Xval, Xte), (ltr, lval, lte) = train_val_test_split_simple(X, labels, seed=args.seed + run)
-                atr = np.array([angle_mapping[l] for l in ltr], dtype=np.float32)
-                aval = np.array([angle_mapping[l] for l in lval], dtype=np.float32)
-                ate = np.array([angle_mapping[l] for l in lte], dtype=np.float32)
-                ytr = angles_2_unit_circle_points(atr)
-                yval = angles_2_unit_circle_points(aval)
-                yte_idx = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
-                model = create_jurkat_regression_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1))
-                model.compile(optimizer='adam', loss=cos_similarity_loss)
-                monitor, mode = 'val_loss', 'min'
-            else:
-                (Xtr, Xval, Xte), (ltr, lval, lte) = train_val_test_split_simple(X, labels, seed=args.seed + run)
-                ytr = np.array([label_to_idx[l] for l in ltr], dtype=np.int32)
-                yval = np.array([label_to_idx[l] for l in lval], dtype=np.int32)
-                yte_idx = np.array([label_to_idx[l] for l in lte], dtype=np.int32)
-                model = create_jurkat_classification_model(input_shape=(IMAGE_SIZE, IMAGE_SIZE, 1),
-                                                          num_classes=len(PHASES7))
-                model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-                monitor, mode = 'val_accuracy', 'max'
+    # Iterate over splits
+    for iteration, split_indices in splits:
+        fold_name = f'fold{iteration}' if use_cv else f'run{iteration}'
+        print(f'\n{"Fold" if use_cv else "Run"} {iteration}/{n_iterations}')
 
-            print(f'Data: train={Xtr.shape}, val={Xval.shape}, test={Xte.shape}')
+        # Prepare data splits
+        # Xtr, Xval, X_test: 訓練/検証/テスト用の画像データ
+        # labels_tr, labels_val: 訓練/検証用のラベル（角度 or 文字列）
+        # test_target: テスト用のターゲット（角度 or クラスインデックス）
+        # yidx_test: テスト用のクラスインデックス（confusion matrix用）
+        Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test = prepare_split_data(
+            use_cv, iteration, X, labels, y_all_idx, angles_all if is_regression else None,
+            is_regression, label_to_idx, angle_mapping, args.seed,
+            train_idx=split_indices[0] if use_cv else None,
+            test_idx=split_indices[1] if use_cv else None
+        )
+        print(f'Data: train={Xtr.shape}, val={Xval.shape}, test={X_test.shape}')
 
-            # Checkpoint
-            callbacks = []
-            if args.save_weights:
-                subdir = 'jurkat_7cls' if is_regression else 'jurkat_7cls_cls'
-                mc = setup_checkpoint(f'weights/{subdir}', f'run{run}.keras',
-                                     monitor=monitor, mode=mode, save_weights_only=(not is_regression))
-                callbacks.append(mc)
+        # Train and evaluate
+        # regressionの場合: result = 平均角度誤差、tol_acc = 許容範囲内正解率
+        # classificationの場合: result = 精度、tol_acc = None
+        result, tol_acc, model = run_single_iteration(
+            Xtr, Xval, X_test, labels_tr, labels_val, test_target, yidx_test,
+            is_regression, label_to_idx, angle_mapping, args, fold_name, TOLERANCE, PHASES7
+        )
 
-            # Train
-            model.fit(Xtr, ytr, validation_data=(Xval, yval),
-                     epochs=args.epochs, batch_size=args.batch_size,
-                     callbacks=callbacks, verbose=1)
+        all_results.append(result)
+        if tol_acc is not None:
+            all_tol_acc.append(tol_acc)
 
-            # Evaluate
-            if is_regression:
-                preds = model.predict(Xte, verbose=0)
-                preds = associated_points_on_circle(preds)
-                pred_angles = points_2_angles(preds)
-                mean_dev = prediction_mean_deviation(ate, pred_angles)
-                tol_acc = tolerance_accuracy(pred_angles, ate, tol=TOLERANCE)
-                all_results.append(mean_dev)
-                all_tol_acc.append(tol_acc)
-                print(f'Run {run+1}: deviation={mean_dev:.2f}°, tol_acc={tol_acc*100:.2f}%')
-
-                if args.confmat:
-                    pred_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in pred_angles]
-                    y_pred_idx = np.array([label_to_idx[l] for l in pred_labels], dtype=np.int32)
-                    save_confusion_matrix(yte_idx, y_pred_idx, PHASES7,
-                                        f'{args.out_dir}/regression', args.confmat_norm, f'run{run+1}')
-            else:
-                test_loss, test_acc = model.evaluate(Xte, yte_idx, verbose=0)
-                all_results.append(test_acc)
-                print(f'Run {run+1}: accuracy={test_acc*100:.2f}%')
-
-                if run == args.runs - 1:
-                    probs = model.predict(Xte, verbose=0)
-                    y_pred_idx = np.argmax(probs, axis=1)
-                    print('\nClassification report:')
-                    print(classification_report(yte_idx, y_pred_idx, target_names=PHASES7, digits=4))
-
-                if args.confmat:
-                    probs = model.predict(Xte, verbose=0)
-                    y_pred_idx = np.argmax(probs, axis=1)
-                    save_confusion_matrix(yte_idx, y_pred_idx, PHASES7,
-                                        f'{args.out_dir}/classification', args.confmat_norm, f'run{run+1}')
+        # Print results
+        if is_regression:
+            print(f'{fold_name}: deviation={result:.2f}°, tol_acc@±{TOLERANCE:.2f}°={tol_acc*100:.2f}%')
+        else:
+            print(f'{fold_name}: accuracy={result*100:.2f}%')
+            if iteration == n_iterations:
+                y_pred_idx = np.argmax(model.predict(X_test, verbose=0), axis=1)
+                print('\nClassification report:')
+                print(classification_report(test_target, y_pred_idx, target_names=PHASES7, digits=4))
 
     # Summary
     print('\n=== Summary ===')
