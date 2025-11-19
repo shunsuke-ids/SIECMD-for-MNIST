@@ -276,6 +276,22 @@ def main():
         )
         print(f'Data: train={Xtr.shape}, val={Xval.shape}, test={X_test.shape}')
 
+        # Debug: Check data distribution
+        from collections import Counter
+        if is_regression or is_multitask:
+            # 角度からラベルに戻す
+            train_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in labels_tr]
+            val_labels = [angle_to_label_with_mapping(a, angle_mapping) for a in labels_val]
+            test_labels_str = [PHASES7[idx] for idx in yidx_test]
+            print(f'Train distribution: {dict(sorted(Counter(train_labels).items()))}')
+            print(f'Val distribution: {dict(sorted(Counter(val_labels).items()))}')
+            print(f'Test distribution: {dict(sorted(Counter(test_labels_str).items()))}')
+        else:
+            print(f'Train distribution: {dict(sorted(Counter(labels_tr).items()))}')
+            print(f'Val distribution: {dict(sorted(Counter(labels_val).items()))}')
+            test_labels_str = [PHASES7[idx] for idx in yidx_test]
+            print(f'Test distribution: {dict(sorted(Counter(test_labels_str).items()))}')
+
         # Train and evaluate
         # regressionの場合: result = 平均角度誤差、tol_acc = 許容範囲内正解率
         # classificationの場合: result = 精度、tol_acc = None
