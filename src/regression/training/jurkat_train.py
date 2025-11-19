@@ -22,6 +22,7 @@ from pathlib import Path
 
 from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
 from sklearn.metrics import classification_report
+from keras.callbacks import EarlyStopping
 
 # Add project root
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
@@ -131,6 +132,16 @@ num_classes=num_classes)
 
     # Train
     callbacks = []
+
+    early_stop = EarlyStopping(
+        monitor=monitor,
+        patience=4,
+        restore_best_weights=True,
+        mode=mode,
+        verbose=1
+    )
+    callbacks.append(early_stop)
+    
     if args.save_weights:
         subdir = 'jurkat_7cls' if is_regression else 'jurkat_7cls_cls'
         if is_multitask:
