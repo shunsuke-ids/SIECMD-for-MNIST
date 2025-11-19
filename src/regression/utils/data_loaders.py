@@ -186,3 +186,64 @@ def get_label_to_index_mapping(labels=PHASES7):
         Dictionary mapping labels to indices
     """
     return {label: i for i, label in enumerate(labels)}
+
+PHENOCAM_DIR = Path('/home/shunsuke/data/raw/phenocam/phenocamdata/ashburnham')
+SEASONS = ['Spring', 'Summer', 'Fall', 'Winter']
+
+def load_phenocam_seasonal_data(limit_per_season:int = None, image_size: int = 224):
+    """
+    Phenocam 画像を季節ごとに読み込む。
+    Args:
+        image_size: 画像のリサイズ後の一辺の長さ（正方形）。デフォルトは224。
+        limit_per_season: 各季節ごとの画像数の上限（プロトタイピング用）。デフォルトはNone（制限なし）。
+    
+    Returns:
+        X: 画像の配列 (N, H, W, 3)
+        labels: 季節ラベルの配列 (N,)
+    """
+    X: List[np.ndarray] = []
+    season_labels: List[str] = []
+    season_counts: Dict[str, int] = {s: 0 for s in SEASONS}
+
+    for year_dir in sorted(PHENOCAM_DIR.glob('[0-9]*')):
+        if not year_dir.is_dir():
+            continue
+
+        for month_dir in sorted(year_dir.glob('[0-9]*')):
+            if not month_dir.is_dir():
+                continue
+
+            month = int(month_dir.name)
+            season = month_to_season(month)
+
+            if limit_per_season is not None and season_counts[season] >= limit_per_season:
+                continue
+
+            for img_path in sorted(month_dir.glob('*.jpg')):
+                img = cv2.imread(str(img_path))
+                if img is None:
+                    continue
+                if img.shape[0] != image_size or img.shape[1] != image_size:
+                    img = cv2.resize(img, (image_size, image_size), interpolation=cv2.INTER_AREA) # 縮小にはINTER_AREAを使用するのが推奨らしい
+
+                # 学習しやすいように[0, 255]から[0, 1]に正規化
+                img = img.astype(np.float32) / 255.0
+
+                X.append(img)
+                season_labels.append(season)
+                season_counts[season] += 1
+
+    X = np.stack(X, axis=0)
+    labels = np.array(season_labels)
+
+    return X, labels
+
+def month_to_season(month: int) -> str:
+    if month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    elif month in [9, 10, 11]:
+        return 'Fall'
+    else:
+        return 'Winter'
