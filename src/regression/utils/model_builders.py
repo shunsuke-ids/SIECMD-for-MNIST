@@ -34,6 +34,7 @@ def create_jurkat_backbone(input_shape=(66, 66, 1)):
     x = kl.Conv2D(256, 3, padding='same', activation='relu')(x)
     x = kl.GlobalAveragePooling2D()(x)
     x = kl.Dense(256, activation='relu')(x)
+    # x = kl.Dropout(0.3)(x)
     features = kl.Dense(128, activation='relu', name='penultimate_features')(x)
     return inputs, features
 
