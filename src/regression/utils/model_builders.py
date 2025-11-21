@@ -193,3 +193,50 @@ def create_jurkat_multitask_model(input_shape=(66, 66, 1), num_classes=7):
     model = km.Model(inputs=inputs, outputs=[regression_out, classification_out])
 
     return model
+
+def create_phenocam_backbone(input_shape=(224, 224, 3)):
+    inputs = kl.Input(shape=input_shape)
+    x = kl.Conv2D(32, 3, padding='same', activation='relu')(inputs)
+    x = kl.MaxPooling2D()(x)
+    x = kl.Conv2D(64, 3, padding='same', activation='relu')(x)
+    x = kl.MaxPooling2D()(x)
+    x = kl.Conv2D(128, 3, padding='same', activation='relu')(x)
+    x = kl.MaxPooling2D()(x)
+    x = kl.Conv2D(256, 3, padding='same', activation='relu')(x)
+    x = kl.GlobalAveragePooling2D()(x)
+    x = kl.Dense(256, activation='relu')(x)
+    x = kl.Dropout(0.3)(x)
+    features = kl.Dense(128, activation='relu', name='penultimate_features')(x)
+
+    return inputs, features
+
+def create_phenocam_classification_model(input_shape=(224, 224, 3), num_classes=4):
+    inputs, features = create_phenocam_backbone(input_shape)
+    outputs = add_classification_head(features, num_classes)
+
+    return km.Model(inputs, outputs)
+
+def create_phenocam_regression_model(input_shape=(224, 224, 3), activation=None):
+    if activation is None:
+        from src.DL.activation_functions import sigmoid_activation
+        activation = sigmoid_activation
+
+    inputs, features = create_phenocam_backbone(input_shape)
+    outputs = add_regression_head(features, activation)
+
+    return km.Model(inputs, outputs)
+
+def create_phenocam_multitask_model(input_shape=(224, 224, 3), num_classes=4):
+    from src.DL.activation_functions import sigmoid_activation
+
+    inputs, features = create_phenocam_backbone(input_shape)
+
+    regression_out = add_regression_head(features, sigmoid_activation)
+    regression_out = kl.Lambda(lambda x: x, name = 'regression')(regression_out)
+
+    classification_out = add_classification_head(features, num_classes)
+    classification_out = kl.Lambda(lambda x: x, name='classification')(classification_out)
+
+    model = km.Model(inputs=inputs, outputs=[regression_out, classification_out])
+
+    return model
