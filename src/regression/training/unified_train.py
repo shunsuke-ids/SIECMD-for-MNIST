@@ -74,8 +74,8 @@ DATASET_CONFIGS = {
           },
           'tolerance': 180.0 / 4.0,  # Half of inter-class spacing (45°)
           'weights_dir_suffix': '4seasons',
-          'batch_size': 16,  # Reduced from 32 to prevent OOM
-          'patience': 10  # Increased from 5 to allow more training
+          'batch_size': 64,  # Reduced from 32 to prevent OOM
+          'patience': 6  # Increased from 5 to allow more training
       }    
 }
 

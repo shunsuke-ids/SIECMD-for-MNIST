@@ -71,17 +71,34 @@ def create_jurkat_multitask_model(input_shape=(66, 66, 1), num_classes=7):
 
 def create_phenocam_backbone(input_shape=(224, 224, 3)):
     inputs = kl.Input(shape=input_shape)
-    x = kl.Conv2D(32, 3, padding='same', activation='relu')(inputs)
+    x = kl.Conv2D(32, 3, padding='same')(inputs)
+    x = kl.BatchNormalization()(x)
+    x = kl.Activation('relu')(x)
     x = kl.MaxPooling2D()(x)
-    x = kl.Conv2D(64, 3, padding='same', activation='relu')(x)
+
+    x = kl.Conv2D(64, 3, padding='same')(x)
+    x = kl.BatchNormalization()(x)
+    x = kl.Activation('relu')(x)
     x = kl.MaxPooling2D()(x)
-    x = kl.Conv2D(128, 3, padding='same', activation='relu')(x)
+
+    x = kl.Conv2D(128, 3, padding='same')(x)
+    x = kl.BatchNormalization()(x)
+    x = kl.Activation('relu')(x)
     x = kl.MaxPooling2D()(x)
-    x = kl.Conv2D(256, 3, padding='same', activation='relu')(x)
+
+    x = kl.Conv2D(256, 3, padding='same')(x)
+    x = kl.BatchNormalization()(x)
+    x = kl.Activation('relu')(x)
     x = kl.GlobalAveragePooling2D()(x)
-    x = kl.Dense(256, activation='relu')(x)
+
+    x = kl.Dense(256)(x)
+    x = kl.BatchNormalization()(x)
+    x = kl.Activation('relu')(x)
     x = kl.Dropout(0.3)(x)
-    features = kl.Dense(128, activation='relu', name='penultimate_features')(x)
+
+    x = kl.Dense(128)(x)
+    x = kl.BatchNormalization()(x)
+    features = kl.Activation('relu', name='penultimate_features')(x)
 
     return inputs, features
 
