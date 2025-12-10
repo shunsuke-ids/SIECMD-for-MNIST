@@ -1,0 +1,117 @@
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import datasets, transforms
+import numpy as np
+import os
+import sys
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_root)
+
+def get_mnist_loaders(batch_size=64, data_dir='./data', num_workers=2):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,)) # この値で正規化すると平均が0, 分散が1になる
+    ])
+
+    train_dataset = datasets.MNIST(
+        root=data_dir,
+        train=True,
+        download=True,
+        transform=transform
+    )
+
+    test_dataset = datasets.MNIST(
+        root=data_dir,
+        train=False,
+        download=True,
+        transform=transform
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers
+    )
+
+    return train_loader, test_loader
+
+PHASES3 = ['G1', 'S', 'G2/M']
+
+class JurkatDataset(Dataset):
+    def __init__(self, images, labels, transform=None):
+        self.images = images
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        label = self.labels[idx]
+
+        if len(image.shape) == 2:  # グレースケール画像の場合
+            image = torch.from_numpy(image).unsqueeze(0).float()  # チャンネル次元を追加
+        else:
+            image = torch.from_numpy(image).permute(2, 0, 1).float()  # (H, W, C) -> (C, H, W)
+
+        image = image / 255.0  # 0-255の範囲を0-1に正規化
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
+def merge_jurkat_3class(labels):
+    label_mapping = {
+        0:0,
+        1:1,
+        2:2,
+        3:2,
+        4:2,
+        5:2,
+        6:2
+    }
+    return np.array([label_mapping[label] for label in labels])
+
+def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_classes=3):
+    from src.regression.utils.data_loaders import load_jurkat_ch3_data
+    from sklearn.model_selection import train_test_split
+
+    X, labels = load_jurkat_ch3_data(limit_per_phase=limit_per_phase, image_size=66)
+
+    from src.regression.utils.data_loaders import get_label_to_index_mapping, PHASES7
+    label_to_index = get_label_to_index_mapping(PHASES7)
+    y = np.array([label_to_index[label] for label in labels])
+
+    if num_classes == 3:
+        y = merge_jurkat_3class(y)
+        print(f"Merged labels into 3 classes: {PHASES3}")
+    else:
+        print(f"Using original 7 classes: {PHASES7}")
+    
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+    )
+
+    train_dataset = JurkatDataset(X_train, y_train)
+    val_dataset = JurkatDataset(X_val, y_val)
+    test_dataset = JurkatDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
