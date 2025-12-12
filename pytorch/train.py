@@ -34,12 +34,7 @@ def train_epoch(model, loader, loss_fn, optimizer, device):
         optimizer.zero_grad() # Pytorchは勾配の初期化が必要
         logits = model(inputs) # モデルの順伝播
 
-        if isinstance(loss_fn, SoftmaxVectorLoss): # クロスエントロピーにはSoftmaxが自動で含まれるため、合成ベクトル損失の場合のみSoftmaxを適用
-            loss_input = torch.softmax(logits, dim=1)
-        else:
-            loss_input = logits
-
-        loss = loss_fn(loss_input, labels) # 損失の計算
+        loss = loss_fn(logits, labels) # 損失の計算
         loss.backward() # 逆伝播(Pytorchはbackwardメソッド実装なしで呼び出せる)
         optimizer.step() # パラメータの更新
 
@@ -58,12 +53,7 @@ def evaluate(model, loader, loss_fn, device):
             inputs, labels = inputs.to(device), labels.to(device)
             logits = model(inputs)
 
-            if isinstance(loss_fn, SoftmaxVectorLoss):
-                loss_input = torch.softmax(logits, dim=1)
-            else:
-                loss_input = logits
-
-            loss = loss_fn(loss_input, labels)
+            loss = loss_fn(logits, labels)
 
             total_loss += loss.item() * inputs.size(0)
             correct += (logits.argmax(dim=1) == labels).sum().item()

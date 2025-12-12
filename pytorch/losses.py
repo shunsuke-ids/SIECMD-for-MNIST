@@ -28,9 +28,10 @@ class SoftmaxVectorLoss(nn.Module): # nn.Moduleクラスを継承
         Returns:
             ロス
         """
+        y_pred_softmax = F.softmax(y_pred, dim=1)
         y_true_onehot = F.one_hot(y_true.long(), num_classes=self.num_classes).float()
 
-        pred_vector = torch.matmul(y_pred, self.class_coords)
+        pred_vector = torch.matmul(y_pred_softmax, self.class_coords)
         true_vector = torch.matmul(y_true_onehot, self.class_coords)
 
         dot_product = torch.sum(pred_vector * true_vector, dim=-1)
