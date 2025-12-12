@@ -4,6 +4,7 @@ import torch.optim as optim
 import argparse
 import json
 import time
+import wandb
 from pathlib import Path
 
 from losses import SoftmaxVectorLoss
@@ -94,6 +95,14 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
     print(f"Best Test Accuracy: {best_acc:.4f}")
     print(f"{'='*60}\n")
 
+    wandb.log({
+        "train_loss": train_loss,
+        "train_acc": train_acc,
+        "test_loss": test_loss,
+        "test_acc": test_acc,
+        "best_acc": best_acc
+    })
+
     return history, best_acc
 
 def main():
@@ -118,6 +127,8 @@ def main():
     elif args.dataset == 'jurkat':
         train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=cfg['num_classes'])
     print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
+
+    wandb.init(project="mnist-svl", name=f"{args.dataset}_{args.loss}_{args.epochs}", config=vars(args))
 
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
