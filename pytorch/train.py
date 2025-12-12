@@ -132,7 +132,10 @@ def main():
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    loss_fn = loss_fn_class() # インスタンス生成
+    if args.loss == 'svl':
+        loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
+    else:
+        loss_fn = loss_fn_class()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     eval_loader = val_loader if val_loader is not None else test_loader
