@@ -9,7 +9,6 @@ import numpy as np
 import cv2
 from pathlib import Path
 from typing import Tuple, List, Dict
-from keras.datasets import mnist
 
 
 PHASE_DIR = Path('/home/shunsuke/data/raw/extracted/CellCycle')
@@ -73,6 +72,7 @@ def load_mnist_data():
         (x_train, y_train): Training data and labels
         (x_test, y_test): Test data and labels
     """
+    from keras.datasets import mnist
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
     # Normalize
