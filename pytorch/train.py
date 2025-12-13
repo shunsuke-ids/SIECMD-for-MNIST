@@ -87,6 +87,14 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
         history['test_loss'].append(test_loss)
         history['test_acc'].append(test_acc)
 
+        # エポックごとにwandbにログを記録
+        wandb.log({
+            "train_loss": train_loss,
+            "train_acc": train_acc,
+            "test_loss": test_loss,
+            "test_acc": test_acc
+        })
+
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
               f"Train: {train_loss:.4f}/{train_acc:.4f} | "
               f"Test: {test_loss:.4f}/{test_acc:.4f} | Best: {best_acc:.4f}")
@@ -95,13 +103,8 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
     print(f"Best Test Accuracy: {best_acc:.4f}")
     print(f"{'='*60}\n")
 
-    wandb.log({
-        "train_loss": train_loss,
-        "train_acc": train_acc,
-        "test_loss": test_loss,
-        "test_acc": test_acc,
-        "best_acc": best_acc
-    })
+    # 最終結果をwandbのsummaryに記録
+    wandb.summary["best_test_acc"] = best_acc
 
     return history, best_acc
 
@@ -128,7 +131,13 @@ def main():
         train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=cfg['num_classes'])
     print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
 
-    wandb.init(project="mnist-svl", name=f"{args.dataset}_{args.loss}_{args.epochs}", config=vars(args))
+    wandb.init(
+        project="ce_vs_svl",
+        group=args.dataset,
+        tags=[args.loss],
+        name=f"{args.loss}_{args.lr}lr_{args.epochs}ep",
+        config=vars(args)
+    )
 
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
@@ -141,16 +150,10 @@ def main():
 
     eval_loader = val_loader if val_loader is not None else test_loader
 
-    history, best_acc = train_and_evaluate(
+    train_and_evaluate(
         model, train_loader, eval_loader, loss_fn,
         optimizer, device, args.epochs, loss_name
     )
-
-    results = {
-        'args': vars(args),
-        'best_accuracy': best_acc,
-        'history': history
-    }
 
 if __name__ == '__main__':
     main()
