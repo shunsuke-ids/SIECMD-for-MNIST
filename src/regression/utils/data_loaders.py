@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Tuple, List, Dict
 
 
-PHASE_DIR = Path('/home/shunsuke/data/raw/extracted/CellCycle')
+PHASE_DIR = Path('/home/shunsuke/data/raw/extracted/jurkat_cell_cycle')
 PHASES7 = ['G1', 'S', 'G2', 'Prophase', 'Metaphase', 'Anaphase', 'Telophase']
 
 
