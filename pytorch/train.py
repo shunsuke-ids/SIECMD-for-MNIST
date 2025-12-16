@@ -7,7 +7,7 @@ import time
 import wandb
 from pathlib import Path
 
-from losses import SoftmaxVectorLoss
+from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders
 
@@ -20,7 +20,8 @@ DATASETS = {
 
 LOSS_FUNCTIONS = {
     'ce': ('CrossEntropyLoss', nn.CrossEntropyLoss),
-    'svl': ('SoftmaxVectorLoss', SoftmaxVectorLoss)
+    'svl': ('SoftmaxVectorLoss', SoftmaxVectorLoss),
+    'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss)
 }
 
 def set_seed(seed=42):
@@ -148,7 +149,7 @@ def main():
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    if args.loss == 'svl':
+    if args.loss in ['svl', 'nsvl']:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
         loss_fn = loss_fn_class()
