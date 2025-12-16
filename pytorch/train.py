@@ -9,13 +9,14 @@ from pathlib import Path
 
 from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss
 from models import SimpleCNN
-from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders
+from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders
 
 DATASETS = {
     'mnist': {'num_classes': 10, 'channels': 1, 'size': 28},
     'jurkat': {'num_classes': 3, 'channels': 1, 'size': 66},
     'jurkat7': {'num_classes': 7, 'channels': 1, 'size': 66},
-    'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64}
+    'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64},
+    'sysmex7': {'num_classes': 7, 'channels': 3, 'size': 64}
 }
 
 LOSS_FUNCTIONS = {
@@ -136,6 +137,8 @@ def main():
         train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=7)
     elif args.dataset == 'sysmex':
         train_loader, test_loader = get_sysmex_loaders(args.batch_size)
+    elif args.dataset == 'sysmex7':
+        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size)
     print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
 
     wandb.init(

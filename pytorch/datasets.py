@@ -136,7 +136,7 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 X.append(img)
                 y.append(label_to_index[phase])
-        
+
         return np.array(X), np.array(y)
 
     X_train, y_train = load_split('train')
@@ -149,3 +149,48 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, test_loader
+
+def get_sysmex_7class_loaders(batch_size=64, num_workers=2):
+    # 3クラスのデータセットとは異なりtrainとtestに分かれていないため別関数として定義した
+    import cv2
+    from pathlib import Path
+    from sklearn.model_selection import train_test_split
+
+    SYSMEX_7CLASS_DIR = Path('/home/shunsuke/data/sysmex_cell_cycle_7cls/PHASE/TIF画像')
+    PHASES = ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']
+
+    X, y = [], []
+    label_to_index = {phase: idx for idx, phase in enumerate(PHASES)}
+
+    for phase in PHASES:
+        phase_dir = SYSMEX_7CLASS_DIR / phase
+        for tif_path in sorted(phase_dir.glob('*_merged.tif')):
+            img = cv2.imread(str(tif_path), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            X.append(img)
+            y.append(label_to_index[phase])
+
+    X = np.array(X)
+    y = np.array(y)
+
+    print(f"Loaded {len(X)} images from 7 phases: {PHASES}")
+
+    # 70:15:15の比率でtrain:val:testに分割
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+    )
+
+    train_dataset = ImageDataset(X_train, y_train)
+    val_dataset = ImageDataset(X_val, y_val)
+    test_dataset = ImageDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
