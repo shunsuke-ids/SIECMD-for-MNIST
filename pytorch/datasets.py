@@ -44,9 +44,7 @@ def get_mnist_loaders(batch_size=64, data_dir='./data', num_workers=2):
 
     return train_loader, test_loader
 
-PHASES3 = ['G1', 'S', 'G2/M']
-
-class JurkatDataset(Dataset):
+class ImageDataset(Dataset):
     def __init__(self, images, labels, transform=None):
         self.images = images
         self.labels = labels
@@ -87,6 +85,8 @@ def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_c
     from src.regression.utils.data_loaders import load_jurkat_ch3_data
     from sklearn.model_selection import train_test_split
 
+    PHASES3 = ['G1', 'S', 'G2/M']
+
     X, labels = load_jurkat_ch3_data(limit_per_phase=limit_per_phase, image_size=66)
 
     from src.regression.utils.data_loaders import get_label_to_index_mapping, PHASES7
@@ -106,12 +106,46 @@ def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_c
         X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
     )
 
-    train_dataset = JurkatDataset(X_train, y_train)
-    val_dataset = JurkatDataset(X_val, y_val)
-    test_dataset = JurkatDataset(X_test, y_test)
+    train_dataset = ImageDataset(X_train, y_train)
+    val_dataset = ImageDataset(X_val, y_val)
+    test_dataset = ImageDataset(X_test, y_test)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, val_loader, test_loader
+
+def get_sysmex_loaders(batch_size=64, num_workers=2):
+    import cv2
+    from pathlib import Path
+
+    SYSMEX_DIR = Path('/home/shunsuke/data/sysmex_cell_cycle_3cls')
+    PHASES = ['G1', 'S', 'G2']
+
+    def load_split(split):
+        X, y = [], []
+        label_to_index = {phase: idx for idx, phase in enumerate(PHASES)}
+
+        for phase in PHASES:
+            phase_dir = SYSMEX_DIR / split / phase
+            for tif_path in sorted(phase_dir.glob('*_merged.tif')):
+                img = cv2.imread(str(tif_path), cv2.IMREAD_COLOR)
+                if img is None:
+                    continue
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                X.append(img)
+                y.append(label_to_index[phase])
+        
+        return np.array(X), np.array(y)
+
+    X_train, y_train = load_split('train')
+    X_test, y_test = load_split('test')
+
+    train_dataset = ImageDataset(X_train, y_train)
+    test_dataset = ImageDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, test_loader
