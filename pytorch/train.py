@@ -6,17 +6,21 @@ import json
 import time
 import wandb
 from pathlib import Path
+import numpy as np
+from sklearn.metrics import confusion_matrix, classification_report, f1_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders
 
 DATASETS = {
-    'mnist': {'num_classes': 10, 'channels': 1, 'size': 28},
-    'jurkat': {'num_classes': 3, 'channels': 1, 'size': 66},
-    'jurkat7': {'num_classes': 7, 'channels': 1, 'size': 66},
-    'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64},
-    'sysmex7': {'num_classes': 7, 'channels': 3, 'size': 64}
+    'mnist': {'num_classes': 10, 'channels': 1, 'size': 28, 'class_names': [str(i) for i in range(10)]},
+    'jurkat': {'num_classes': 3, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2/M']},
+    'jurkat7': {'num_classes': 7, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']},
+    'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2']},
+    'sysmex7': {'num_classes': 7, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']}
 }
 
 LOSS_FUNCTIONS = {
@@ -63,11 +67,45 @@ def evaluate(model, loader, loss_fn, device):
             total_loss += loss.item() * inputs.size(0)
             correct += (logits.argmax(dim=1) == labels).sum().item()
             total += inputs.size(0)
-    
+
     return total_loss / total, correct / total
 
+def evaluate_detailed(model, loader, device, class_names=None):
+    model.eval()
+    all_preds = []
+    all_labels = []
+
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            logits = model(inputs)
+            preds = logits.argmax(dim=1)
+
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    all_preds = np.array(all_preds)
+    all_labels = np.array(all_labels)
+
+    # メトリクスの計算
+    cm = confusion_matrix(all_labels, all_preds)
+    report = classification_report(all_labels, all_preds, target_names=class_names, output_dict=True, zero_division=0)
+
+    # F1スコア
+    f1_macro = f1_score(all_labels, all_preds, average='macro', zero_division=0)
+    f1_weighted = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
+
+    return {
+        'confusion_matrix': cm,
+        'classification_report': report,
+        'f1_macro': f1_macro,
+        'f1_weighted': f1_weighted,
+        'predictions': all_preds,
+        'labels': all_labels
+    }
+
 def train_and_evaluate(model, train_loader, test_loader, loss_fn,
-                     optimizer, device, epochs, loss_name):
+                     optimizer, device, epochs, loss_name, class_names=None):
     print(f"\n{'='*60}")
     print(f"Training with {loss_name} for {epochs} epochs")
     print(f"{'='*60}\n")
@@ -83,7 +121,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
 
         train_loss, train_acc = train_epoch(model, train_loader, loss_fn, optimizer, device)
         test_loss, test_acc = evaluate(model, test_loader, loss_fn, device)
-        
+
         best_acc = max(best_acc, test_acc)
 
         history['train_loss'].append(train_loss)
@@ -102,13 +140,60 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
               f"Train: {train_loss:.4f}/{train_acc:.4f} | "
               f"Test: {test_loss:.4f}/{test_acc:.4f} | Best: {best_acc:.4f}")
-    
+
     print(f"\n{'='*60}")
     print(f"Best Test Accuracy: {best_acc:.4f}")
     print(f"{'='*60}\n")
 
+    # 訓練終了後の詳細評価
+    print("Computing detailed metrics...")
+    detailed_metrics = evaluate_detailed(model, test_loader, device, class_names)
+
+    # 混同行列の表示
+    print("\n混同行列:")
+    print(detailed_metrics['confusion_matrix'])
+
+    # クラスごとのメトリクス表示
+    print("\nクラスごとの詳細メトリクス:")
+    report = detailed_metrics['classification_report']
+    if class_names:
+        for class_name in class_names:
+            if class_name in report:
+                metrics = report[class_name]
+                print(f"  {class_name}: Precision={metrics['precision']:.4f}, "
+                      f"Recall={metrics['recall']:.4f}, F1={metrics['f1-score']:.4f}")
+
+    # 全体メトリクスの表示
+    print(f"\nマクロ平均 F1: {detailed_metrics['f1_macro']:.4f}")
+    print(f"加重平均 F1: {detailed_metrics['f1_weighted']:.4f}")
+    print(f"Accuracy: {report['accuracy']:.4f}")
+
+    # 混同行列を画像として保存し、wandbにアップロード
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(detailed_metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
+                yticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
+                ax=ax)
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('True')
+    ax.set_title('Confusion Matrix')
+
+    # wandbに記録
+    wandb.log({"confusion_matrix": wandb.Image(fig)})
+    plt.close(fig)
+
     # 最終結果をwandbのsummaryに記録
     wandb.summary["best_test_acc"] = best_acc
+    wandb.summary["f1_macro"] = detailed_metrics['f1_macro']
+    wandb.summary["f1_weighted"] = detailed_metrics['f1_weighted']
+
+    # クラスごとのメトリクスもwandbに記録
+    if class_names:
+        for class_name in class_names:
+            if class_name in report:
+                wandb.summary[f"{class_name}_f1"] = report[class_name]['f1-score']
+                wandb.summary[f"{class_name}_precision"] = report[class_name]['precision']
+                wandb.summary[f"{class_name}_recall"] = report[class_name]['recall']
 
     return history, best_acc
 
@@ -162,7 +247,7 @@ def main():
 
     train_and_evaluate(
         model, train_loader, eval_loader, loss_fn,
-        optimizer, device, args.epochs, loss_name
+        optimizer, device, args.epochs, loss_name, cfg['class_names']
     )
 
 if __name__ == '__main__':
