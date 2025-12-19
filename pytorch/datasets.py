@@ -120,7 +120,7 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
     import cv2
     from pathlib import Path
 
-    SYSMEX_DIR = Path('/home/shunsuke/data/sysmex_cell_cycle_3cls')
+    SYSMEX_DIR = Path(__file__).parent.parent / 'data' / 'sysmex_cell_cycle_3cls'
     PHASES = ['G1', 'S', 'G2']
 
     def load_split(split):
@@ -156,7 +156,7 @@ def get_sysmex_7class_loaders(batch_size=64, num_workers=2):
     from pathlib import Path
     from sklearn.model_selection import train_test_split
 
-    SYSMEX_7CLASS_DIR = Path('/home/shunsuke/data/sysmex_cell_cycle_7cls/PHASE/TIF画像')
+    SYSMEX_7CLASS_DIR = Path(__file__).parent.parent / 'data' / 'dataset_preprocessed_7classes_mokushi_screening'
     PHASES = ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']
 
     X, y = [], []
