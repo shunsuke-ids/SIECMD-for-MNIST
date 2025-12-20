@@ -150,7 +150,7 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
 
     return train_loader, test_loader
 
-def get_sysmex_7class_loaders(batch_size=64, num_workers=2):
+def get_sysmex_7class_loaders(batch_size=64, num_workers=0):
     # 3クラスのデータセットとは異なりtrainとtestに分かれていないため別関数として定義した
     import cv2
     from pathlib import Path
