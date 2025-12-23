@@ -261,7 +261,7 @@ def main():
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    if args.loss in ['svl', 'nsvl']:
+    if args.loss in ['svl', 'nsvl', 'msevl']:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
         loss_fn = loss_fn_class()
