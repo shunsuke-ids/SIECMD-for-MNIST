@@ -12,7 +12,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
+from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders
 
@@ -28,7 +28,8 @@ LOSS_FUNCTIONS = {
     'ce': ('CrossEntropyLoss', nn.CrossEntropyLoss),
     'svl': ('SoftmaxVectorLoss', SoftmaxVectorLoss),
     'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss),
-    'msevl': ('MSEVectorLoss', MSEVectorLoss)
+    'msevl': ('MSEVectorLoss', MSEVectorLoss),
+    'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss)
 }
 
 def set_seed(seed=42):
@@ -51,7 +52,7 @@ def set_seed(seed=42):
     # 注意: 一部の操作で性能が低下する可能性があります
     # torch.use_deterministic_algorithms(True)  # 必要に応じてコメント解除
 
-def seed_worker(_worker_id):
+def seed_worker (_worker_id):
     """DataLoaderのworkerごとにシードを設定"""
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
@@ -195,8 +196,8 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
     # 混同行列を画像として保存し、wandbにアップロード
     fig, ax = plt.subplots(figsize=(10, 8))
     sns.heatmap(detailed_metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues',
-                xticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
-                yticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
+                xticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])) ,
+                yticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])) ,
                 ax=ax)
     ax.set_xlabel('Predicted')
     ax.set_ylabel('True')
@@ -248,6 +249,7 @@ def main():
         train_loader, test_loader = get_sysmex_loaders(args.batch_size)
     elif args.dataset == 'sysmex7':
         train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size)
+    
     print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
 
     wandb.init(
@@ -261,7 +263,7 @@ def main():
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    if args.loss in ['svl', 'nsvl', 'msevl']:
+    if args.loss in ['svl', 'nsvl', 'msevl', 'eucvl']:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
         loss_fn = loss_fn_class()
@@ -276,4 +278,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
