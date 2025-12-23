@@ -194,3 +194,62 @@ def get_sysmex_7class_loaders(batch_size=64, num_workers=0):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, val_loader, test_loader
+class NormalizedImageDataset(Dataset):
+    """既に[0,1]に正規化済みの画像用Dataset"""
+    def __init__(self, images, labels, transform=None):
+        self.images = images
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        label = self.labels[idx]
+
+        if len(image.shape) == 2:  # グレースケール画像の場合
+            image = torch.from_numpy(image).unsqueeze(0).float()
+        else:
+            image = torch.from_numpy(image).permute(2, 0, 1).float()  # (H, W, C) -> (C, H, W)
+
+        # 既に[0,1]に正規化済みなので255で割らない
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
+def get_phenocam_loaders(batch_size=64, limit_per_season=None, image_size=224, num_workers=2):
+    from src.regression.utils.data_loaders import load_phenocam_seasonal_data, get_label_to_index_mapping, SEASONS
+    from sklearn.model_selection import train_test_split
+
+    X, labels = load_phenocam_seasonal_data(limit_per_season=limit_per_season, image_size=image_size)
+
+    label_to_index = get_label_to_index_mapping(SEASONS)
+    y = np.array([label_to_index[label] for label in labels])
+
+    print(f"Loaded {len(X)} images from {len(SEASONS)} seasons")
+
+    # クラス分布を表示
+    unique, counts = np.unique(y, return_counts=True)
+    for season_idx, count in zip(unique, counts):
+        print(f"  {SEASONS[season_idx]}: {count} images ({count/len(y)*100:.1f}%)")
+
+    # 70:15:15の比率でtrain:val:testに分割
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+    )
+
+    train_dataset = NormalizedImageDataset(X_train, y_train)
+    val_dataset = NormalizedImageDataset(X_val, y_val)
+    test_dataset = NormalizedImageDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
