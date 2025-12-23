@@ -12,7 +12,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss
+from losses import NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders
 
@@ -27,7 +27,8 @@ DATASETS = {
 LOSS_FUNCTIONS = {
     'ce': ('CrossEntropyLoss', nn.CrossEntropyLoss),
     'svl': ('SoftmaxVectorLoss', SoftmaxVectorLoss),
-    'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss)
+    'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss),
+    'msevl': ('MSEVectorLoss', MSEVectorLoss)
 }
 
 def set_seed(seed=42):

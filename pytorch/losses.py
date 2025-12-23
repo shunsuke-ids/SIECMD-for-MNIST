@@ -64,3 +64,27 @@ class NormalizedSoftmaxVectorLoss(nn.Module):
         loss = 1.0 - dot_product
 
         return loss.mean()
+    
+class MSEVectorLoss(nn.Module):
+    """
+    SVLのMSEバージョン
+    """
+    def __init__(self, num_classes):
+        super().__init__()
+        self.num_classes = num_classes
+
+        angles = torch.arange(num_classes, dtype=torch.float32) * (2.0 * np.pi / num_classes)
+        class_coords = torch.stack([torch.cos(angles), torch.sin(angles)], dim=1)
+        self.register_buffer('class_coords', class_coords)
+
+    def forward(self, y_pred, y_true):
+        y_pred_softmax = F.softmax(y_pred, dim=1)
+        y_true_onehot = F.one_hot(y_true.long(), num_classes=self.num_classes).float().to(y_pred.device)
+
+        pred_vector = torch.matmul(y_pred_softmax, self.class_coords)
+        true_vector = torch.matmul(y_true_onehot, self.class_coords)
+
+        squared_diff = torch.sum((pred_vector - true_vector) ** 2, dim=-1)
+        loss = squared_diff.mean()
+
+        return loss
