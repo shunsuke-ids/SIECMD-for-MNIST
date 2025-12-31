@@ -22,7 +22,8 @@ DATASETS = {
     'jurkat7': {'num_classes': 7, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']},
     'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2']},
     'sysmex7': {'num_classes': 7, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']},
-    'phenocam': {'num_classes': 4, 'channels': 3, 'size': 224, 'class_names': ['Spring', 'Summer', 'Fall', 'Winter']}
+    'phenocam': {'num_classes': 4, 'channels': 3, 'size': 224, 'class_names': ['Spring', 'Summer', 'Fall', 'Winter']},
+    'phenocam_monthly': {'num_classes': 12, 'channels': 3, 'size': 224, 'class_names': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']}
 }
 
 LOSS_FUNCTIONS = {
@@ -252,6 +253,8 @@ def main():
         train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size)
     elif args.dataset == 'phenocam':
         train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase)
+    elif args.dataset == 'phenocam_monthly':
+        train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase, label_type='month')
     print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
 
     wandb.init(

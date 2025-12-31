@@ -220,21 +220,22 @@ class NormalizedImageDataset(Dataset):
 
         return image, label
 
-def get_phenocam_loaders(batch_size=64, limit_per_season=None, image_size=224, num_workers=2):
-    from src.regression.utils.data_loaders import load_phenocam_seasonal_data, get_label_to_index_mapping, SEASONS
+def get_phenocam_loaders(batch_size=64, limit_per_season=None, image_size=224, num_workers=2, label_type='season'):
+    from src.regression.utils.data_loaders import load_phenocam_data, get_label_to_index_mapping, SEASONS, MONTHS
     from sklearn.model_selection import train_test_split
 
-    X, labels = load_phenocam_seasonal_data(limit_per_season=limit_per_season, image_size=image_size)
+    X, labels = load_phenocam_data(label_type=label_type, limit_per_class=limit_per_season, image_size=image_size)
 
-    label_to_index = get_label_to_index_mapping(SEASONS)
+    classes = SEASONS if label_type == 'season' else MONTHS
+    label_to_index = get_label_to_index_mapping(classes)
     y = np.array([label_to_index[label] for label in labels])
 
-    print(f"Loaded {len(X)} images from {len(SEASONS)} seasons")
+    print(f"Loaded {len(X)} images from {len(classes)} {label_type}s")
 
     # クラス分布を表示
     unique, counts = np.unique(y, return_counts=True)
-    for season_idx, count in zip(unique, counts):
-        print(f"  {SEASONS[season_idx]}: {count} images ({count/len(y)*100:.1f}%)")
+    for idx, count in zip(unique, counts):
+        print(f"  {classes[idx]}: {count} images ({count/len(y)*100:.1f}%)")
 
     # 70:15:15の比率でtrain:val:testに分割
     X_train, X_temp, y_train, y_temp = train_test_split(
