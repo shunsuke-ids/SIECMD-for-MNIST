@@ -1,4 +1,4 @@
-import numy as np
+import numpy as np
 
 def circular_mae(y_pred, y_true, num_classes):
     """

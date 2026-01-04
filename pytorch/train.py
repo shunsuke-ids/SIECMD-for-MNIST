@@ -137,7 +137,7 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
     }
 
 def train_and_evaluate(model, train_loader, test_loader, loss_fn,
-                     optimizer, device, epochs, loss_name, class_names=None):
+                     optimizer, device, epochs, loss_name, num_classes, class_names=None):
     print(f"\n{'='*60}")
     print(f"Training with {loss_name} for {epochs} epochs")
     print(f"{'='*60}\n")
@@ -179,7 +179,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
 
     # 訓練終了後の詳細評価
     print("Computing detailed metrics...")
-    detailed_metrics = evaluate_detailed(model, test_loader, device, cfg['num_classes'], class_names)
+    detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
 
     # 混同行列の表示
     print("\n混同行列:")
@@ -285,7 +285,7 @@ def main():
 
     train_and_evaluate(
         model, train_loader, eval_loader, loss_fn,
-        optimizer, device, args.epochs, loss_name, cfg['class_names']
+        optimizer, device, args.epochs, loss_name, cfg['num_classes'], cfg['class_names']
     )
 
 if __name__ == '__main__':
