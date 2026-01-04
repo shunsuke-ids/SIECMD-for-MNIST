@@ -15,6 +15,7 @@ import seaborn as sns
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
+from metrics import circular_mae
 
 DATASETS = {
     'mnist': {'num_classes': 10, 'channels': 1, 'size': 28, 'class_names': [str(i) for i in range(10)]},
@@ -97,7 +98,7 @@ def evaluate(model, loader, loss_fn, device):
 
     return total_loss / total, correct / total
 
-def evaluate_detailed(model, loader, device, class_names=None):
+def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
     model.eval()
     all_preds = []
     all_labels = []
@@ -122,11 +123,15 @@ def evaluate_detailed(model, loader, device, class_names=None):
     f1_macro = f1_score(all_labels, all_preds, average='macro', zero_division=0)
     f1_weighted = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
 
+    # MAE
+    circ_mae = circular_mae(all_preds, all_labels, num_classes)
+
     return {
         'confusion_matrix': cm,
         'classification_report': report,
         'f1_macro': f1_macro,
         'f1_weighted': f1_weighted,
+        'circular_mae': circ_mae,
         'predictions': all_preds,
         'labels': all_labels
     }
@@ -174,7 +179,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
 
     # 訓練終了後の詳細評価
     print("Computing detailed metrics...")
-    detailed_metrics = evaluate_detailed(model, test_loader, device, class_names)
+    detailed_metrics = evaluate_detailed(model, test_loader, device, cfg['num_classes'], class_names)
 
     # 混同行列の表示
     print("\n混同行列:")
@@ -194,6 +199,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
     print(f"\nマクロ平均 F1: {detailed_metrics['f1_macro']:.4f}")
     print(f"加重平均 F1: {detailed_metrics['f1_weighted']:.4f}")
     print(f"Accuracy: {report['accuracy']:.4f}")
+    print(f"Circular MAE: {detailed_metrics['circular_mae']:.4f}")
 
     # 混同行列を画像として保存し、wandbにアップロード
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -213,6 +219,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
     wandb.summary["best_test_acc"] = best_acc
     wandb.summary["f1_macro"] = detailed_metrics['f1_macro']
     wandb.summary["f1_weighted"] = detailed_metrics['f1_weighted']
+    wandb.summary["circular_mae"] = detailed_metrics['circular_mae']
 
     # クラスごとのメトリクスもwandbに記録
     if class_names:
