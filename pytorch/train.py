@@ -138,57 +138,67 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
         'labels': all_labels
     }
 
-def train_and_evaluate(model, train_loader, test_loader, loss_fn,
+def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
                      optimizer, device, epochs, loss_name, num_classes, class_names=None):
     print(f"\n{'='*60}")
     print(f"Training with {loss_name} for {epochs} epochs")
     print(f"{'='*60}\n")
 
-    best_acc = 0.0
+    best_val_acc = 0.0
+    best_model_state = None
     history = {
         'train_loss': [], 'train_acc': [],
-        'test_loss': [], 'test_acc': []
+        'val_loss': [], 'val_acc': []
     }
 
     for epoch in range(epochs):
         start = time.time()
 
         train_loss, train_acc = train_epoch(model, train_loader, loss_fn, optimizer, device)
-        test_loss, test_acc = evaluate(model, test_loader, loss_fn, device)
+        val_loss, val_acc = evaluate(model, val_loader, loss_fn, device)
 
-        best_acc = max(best_acc, test_acc)
+        # ベストモデルの保存
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_model_state = model.state_dict().copy()
 
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
-        history['test_loss'].append(test_loss)
-        history['test_acc'].append(test_acc)
+        history['val_loss'].append(val_loss)
+        history['val_acc'].append(val_acc)
 
         # エポックごとにwandbにログを記録
         wandb.log({
             "train_loss": train_loss,
             "train_acc": train_acc,
-            "test_loss": test_loss,
-            "test_acc": test_acc
+            "val_loss": val_loss,
+            "val_acc": val_acc
         })
 
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
               f"Train: {train_loss:.4f}/{train_acc:.4f} | "
-              f"Test: {test_loss:.4f}/{test_acc:.4f} | Best: {best_acc:.4f}")
+              f"Val: {val_loss:.4f}/{val_acc:.4f} | Best Val: {best_val_acc:.4f}")
 
     print(f"\n{'='*60}")
-    print(f"Best Test Accuracy: {best_acc:.4f}")
+    print(f"Best Validation Accuracy: {best_val_acc:.4f}")
     print(f"{'='*60}\n")
 
-    # 訓練終了後の詳細評価
-    print("Computing detailed metrics...")
+    # ベストモデルを読み込んでTest setで最終評価
+    print("Loading best model and evaluating on Test set...")
+    model.load_state_dict(best_model_state)
+
+    # Test setでの詳細評価
+    test_loss, test_acc = evaluate(model, test_loader, loss_fn, device)
+    print(f"Test Loss: {test_loss:.4f} | Test Accuracy: {test_acc:.4f}")
+
     detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
 
     # 混同行列の表示
-    print("\n混同行列:")
+    print("\n混同行列 (Test set):")
     print(detailed_metrics['confusion_matrix'])
 
     # クラスごとのメトリクス表示
-    print("\nクラスごとの詳細メトリクス:")
+    print("\nクラスごとの詳細メトリクス (Test set):")
     report = detailed_metrics['classification_report']
     if class_names:
         for class_name in class_names:
@@ -211,14 +221,16 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
                 ax=ax)
     ax.set_xlabel('Predicted')
     ax.set_ylabel('True')
-    ax.set_title('Confusion Matrix')
+    ax.set_title('Confusion Matrix (Test set)')
 
     # wandbに記録
     wandb.log({"confusion_matrix": wandb.Image(fig)})
     plt.close(fig)
 
     # 最終結果をwandbのsummaryに記録
-    wandb.summary["best_test_acc"] = best_acc
+    wandb.summary["best_val_acc"] = best_val_acc
+    wandb.summary["test_acc"] = test_acc
+    wandb.summary["test_loss"] = test_loss
     wandb.summary["f1_macro"] = detailed_metrics['f1_macro']
     wandb.summary["f1_weighted"] = detailed_metrics['f1_weighted']
     wandb.summary["circular_mae"] = detailed_metrics['circular_mae']
@@ -231,7 +243,7 @@ def train_and_evaluate(model, train_loader, test_loader, loss_fn,
                 wandb.summary[f"{class_name}_precision"] = report[class_name]['precision']
                 wandb.summary[f"{class_name}_recall"] = report[class_name]['recall']
 
-    return history, best_acc
+    return history, best_val_acc, test_acc
 
 def main():
     parser = argparse.ArgumentParser()
@@ -253,11 +265,11 @@ def main():
     if args.dataset == 'mnist':
         train_loader, test_loader = get_mnist_loaders(args.batch_size)
     elif args.dataset == 'jurkat':
-        train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=3)
+        train_loader, val_loader, test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=3)
     elif args.dataset == 'jurkat4':
-        train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=4)
+        train_loader, val_loader, test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=4)
     elif args.dataset == 'jurkat7':
-        train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=7)
+        train_loader, val_loader, test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=7)
     elif args.dataset == 'sysmex':
         train_loader, test_loader = get_sysmex_loaders(args.batch_size)
     elif args.dataset == 'sysmex4':
@@ -268,7 +280,13 @@ def main():
         train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase)
     elif args.dataset == 'phenocam_monthly':
         train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase, label_type='month')
-    print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset) if val_loader is not None else 0} |Test: {len(test_loader.dataset)}")
+
+    # val_loaderがない場合はtest_loaderを使う（mnist, sysmex）
+    if val_loader is None:
+        val_loader = test_loader
+        print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Val/Test: {len(test_loader.dataset)} (no separate validation set)")
+    else:
+        print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset)} | Test: {len(test_loader.dataset)}")
 
     wandb.init(
         project="ce_vs_svl",
@@ -279,7 +297,7 @@ def main():
     )
 
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
-    
+
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
     if args.loss in ['svl', 'nsvl', 'msevl', 'eucvl']:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
@@ -287,10 +305,8 @@ def main():
         loss_fn = loss_fn_class()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    eval_loader = val_loader if val_loader is not None else test_loader
-
     train_and_evaluate(
-        model, train_loader, eval_loader, loss_fn,
+        model, train_loader, val_loader, test_loader, loss_fn,
         optimizer, device, args.epochs, loss_name, cfg['num_classes'], cfg['class_names']
     )
 
