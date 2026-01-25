@@ -20,8 +20,10 @@ from metrics import circular_mae
 DATASETS = {
     'mnist': {'num_classes': 10, 'channels': 1, 'size': 28, 'class_names': [str(i) for i in range(10)]},
     'jurkat': {'num_classes': 3, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2/M']},
+    'jurkat4': {'num_classes': 4, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2', 'M']},
     'jurkat7': {'num_classes': 7, 'channels': 1, 'size': 66, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']},
     'sysmex': {'num_classes': 3, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2']},
+    'sysmex4': {'num_classes': 4, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2', 'M']},
     'sysmex7': {'num_classes': 7, 'channels': 3, 'size': 64, 'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']},
     'phenocam': {'num_classes': 4, 'channels': 3, 'size': 224, 'class_names': ['Spring', 'Summer', 'Fall', 'Winter']},
     'phenocam_monthly': {'num_classes': 12, 'channels': 3, 'size': 224, 'class_names': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']}
@@ -252,12 +254,16 @@ def main():
         train_loader, test_loader = get_mnist_loaders(args.batch_size)
     elif args.dataset == 'jurkat':
         train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=3)
+    elif args.dataset == 'jurkat4':
+        train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=4)
     elif args.dataset == 'jurkat7':
         train_loader, val_loader,test_loader = get_jurkat_loaders(args.batch_size, limit_per_phase=args.limit_per_phase, num_classes=7)
     elif args.dataset == 'sysmex':
         train_loader, test_loader = get_sysmex_loaders(args.batch_size)
+    elif args.dataset == 'sysmex4':
+        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size, num_classes=4)
     elif args.dataset == 'sysmex7':
-        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size)
+        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(args.batch_size, num_classes=7)
     elif args.dataset == 'phenocam':
         train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase)
     elif args.dataset == 'phenocam_monthly':

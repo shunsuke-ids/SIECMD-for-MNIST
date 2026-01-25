@@ -81,11 +81,25 @@ def merge_jurkat_3class(labels):
     }
     return np.array([label_mapping[label] for label in labels])
 
+def merge_4class(labels):
+    """7クラス→4クラス: G1, S, G2, M(Pro+Meta+Ana+Telo)"""
+    label_mapping = {
+        0: 0,  # G1 -> G1
+        1: 1,  # S -> S
+        2: 2,  # G2 -> G2
+        3: 3,  # Pro -> M
+        4: 3,  # Meta -> M
+        5: 3,  # Ana -> M
+        6: 3   # Telo -> M
+    }
+    return np.array([label_mapping[label] for label in labels])
+
 def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_classes=3):
     from src.regression.utils.data_loaders import load_jurkat_ch3_data
     from sklearn.model_selection import train_test_split
 
     PHASES3 = ['G1', 'S', 'G2/M']
+    PHASES4 = ['G1', 'S', 'G2', 'M']
 
     X, labels = load_jurkat_ch3_data(limit_per_phase=limit_per_phase, image_size=66)
 
@@ -96,6 +110,9 @@ def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_c
     if num_classes == 3:
         y = merge_jurkat_3class(y)
         print(f"Merged labels into 3 classes: {PHASES3}")
+    elif num_classes == 4:
+        y = merge_4class(y)
+        print(f"Merged labels into 4 classes: {PHASES4}")
     else:
         print(f"Using original 7 classes: {PHASES7}")
     
@@ -150,19 +167,20 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
 
     return train_loader, test_loader
 
-def get_sysmex_7class_loaders(batch_size=64, num_workers=0):
+def get_sysmex_7class_loaders(batch_size=64, num_workers=0, num_classes=7):
     # 3クラスのデータセットとは異なりtrainとtestに分かれていないため別関数として定義した
     import cv2
     from pathlib import Path
     from sklearn.model_selection import train_test_split
 
     SYSMEX_7CLASS_DIR = Path(__file__).parent.parent / 'data' / 'dataset_preprocessed_7classes_mokushi_screening'
-    PHASES = ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']
+    PHASES7 = ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']
+    PHASES4 = ['G1', 'S', 'G2', 'M']
 
     X, y = [], []
-    label_to_index = {phase: idx for idx, phase in enumerate(PHASES)}
+    label_to_index = {phase: idx for idx, phase in enumerate(PHASES7)}
 
-    for phase in PHASES:
+    for phase in PHASES7:
         phase_dir = SYSMEX_7CLASS_DIR / phase
         for tif_path in sorted(phase_dir.glob('*_merged.tif')):
             img = cv2.imread(str(tif_path), cv2.IMREAD_COLOR)
@@ -175,7 +193,11 @@ def get_sysmex_7class_loaders(batch_size=64, num_workers=0):
     X = np.array(X)
     y = np.array(y)
 
-    print(f"Loaded {len(X)} images from 7 phases: {PHASES}")
+    if num_classes == 4:
+        y = merge_4class(y)
+        print(f"Loaded {len(X)} images, merged into 4 classes: {PHASES4}")
+    else:
+        print(f"Loaded {len(X)} images from 7 phases: {PHASES7}")
 
     # 70:15:15の比率でtrain:val:testに分割
     X_train, X_temp, y_train, y_temp = train_test_split(
