@@ -16,7 +16,7 @@ import seaborn as sns
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
-from metrics import circular_mae
+from metrics import circular_mae, circular_mae_per_class
 
 DATASETS = {
     'mnist': {'num_classes': 10, 'channels': 1, 'size': 28, 'class_names': [str(i) for i in range(10)]},
@@ -128,6 +128,7 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
 
     # MAE
     circ_mae = circular_mae(all_preds, all_labels, num_classes)
+    circ_mae_per_class = circular_mae_per_class(all_preds, all_labels, num_classes)
 
     return {
         'confusion_matrix': cm,
@@ -135,6 +136,8 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
         'f1_macro': f1_macro,
         'f1_weighted': f1_weighted,
         'circular_mae': circ_mae,
+        'circular_mae_per_class': circ_mae_per_class['per_class'],
+        'circular_mae_macro': circ_mae_per_class['macro'],
         'predictions': all_preds,
         'labels': all_labels
     }
@@ -216,6 +219,14 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print(f"加重平均 F1: {best_detailed_metrics['f1_weighted']:.4f}")
     print(f"Accuracy: {best_report['accuracy']:.4f}")
     print(f"Circular MAE: {best_detailed_metrics['circular_mae']:.4f}")
+    print(f"Circular MAE (Macro): {best_detailed_metrics['circular_mae_macro']:.4f}")
+
+    # クラスごとのcMAE
+    print("\nクラスごとの Circular MAE:")
+    if class_names:
+        for i, class_name in enumerate(class_names):
+            cmae_val = best_detailed_metrics['circular_mae_per_class'].get(i, float('nan'))
+            print(f"  {class_name}: {cmae_val:.4f}")
 
     # ベストモデルの混同行列を画像として保存
     fig_best, ax_best = plt.subplots(figsize=(10, 8))
@@ -258,6 +269,14 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print(f"加重平均 F1: {final_detailed_metrics['f1_weighted']:.4f}")
     print(f"Accuracy: {final_report['accuracy']:.4f}")
     print(f"Circular MAE: {final_detailed_metrics['circular_mae']:.4f}")
+    print(f"Circular MAE (Macro): {final_detailed_metrics['circular_mae_macro']:.4f}")
+
+    # クラスごとのcMAE
+    print("\nクラスごとの Circular MAE:")
+    if class_names:
+        for i, class_name in enumerate(class_names):
+            cmae_val = final_detailed_metrics['circular_mae_per_class'].get(i, float('nan'))
+            print(f"  {class_name}: {cmae_val:.4f}")
 
     # 最終エポックモデルの混同行列を画像として保存
     fig_final, ax_final = plt.subplots(figsize=(10, 8))
@@ -281,6 +300,7 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     wandb.summary["best_f1_macro"] = best_detailed_metrics['f1_macro']
     wandb.summary["best_f1_weighted"] = best_detailed_metrics['f1_weighted']
     wandb.summary["best_circular_mae"] = best_detailed_metrics['circular_mae']
+    wandb.summary["best_circular_mae_macro"] = best_detailed_metrics['circular_mae_macro']
 
     # 最終エポックモデルの結果
     wandb.summary["final_val_acc"] = history['val_acc'][-1]
@@ -289,18 +309,26 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     wandb.summary["final_f1_macro"] = final_detailed_metrics['f1_macro']
     wandb.summary["final_f1_weighted"] = final_detailed_metrics['f1_weighted']
     wandb.summary["final_circular_mae"] = final_detailed_metrics['circular_mae']
+    wandb.summary["final_circular_mae_macro"] = final_detailed_metrics['circular_mae_macro']
 
-    # クラスごとのメトリクス（ベストモデル）
+    # クラスごとのメトリクス
     if class_names:
-        for class_name in class_names:
+        for i, class_name in enumerate(class_names):
+            # ベストモデル
             if class_name in best_report:
                 wandb.summary[f"best_{class_name}_f1"] = best_report[class_name]['f1-score']
                 wandb.summary[f"best_{class_name}_precision"] = best_report[class_name]['precision']
                 wandb.summary[f"best_{class_name}_recall"] = best_report[class_name]['recall']
+            if i in best_detailed_metrics['circular_mae_per_class']:
+                wandb.summary[f"best_{class_name}_cmae"] = best_detailed_metrics['circular_mae_per_class'][i]
+
+            # 最終エポックモデル
             if class_name in final_report:
                 wandb.summary[f"final_{class_name}_f1"] = final_report[class_name]['f1-score']
                 wandb.summary[f"final_{class_name}_precision"] = final_report[class_name]['precision']
                 wandb.summary[f"final_{class_name}_recall"] = final_report[class_name]['recall']
+            if i in final_detailed_metrics['circular_mae_per_class']:
+                wandb.summary[f"final_{class_name}_cmae"] = final_detailed_metrics['circular_mae_per_class'][i]
 
     return history, best_val_acc, best_test_acc, final_test_acc
 
