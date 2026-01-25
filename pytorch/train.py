@@ -8,6 +8,7 @@ import wandb
 from pathlib import Path
 import numpy as np
 import random
+import copy
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -160,7 +161,7 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
         # ベストモデルの保存
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            best_model_state = model.state_dict().copy()
+            best_model_state = copy.deepcopy(model.state_dict())
 
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
@@ -183,67 +184,125 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print(f"Best Validation Accuracy: {best_val_acc:.4f}")
     print(f"{'='*60}\n")
 
-    # ベストモデルを読み込んでTest setで最終評価
-    print("Loading best model and evaluating on Test set...")
+    # 最終エポックのモデルを保存
+    final_model_state = copy.deepcopy(model.state_dict())
+
+    # ===========================================
+    # 1. ベストモデル（Validation最高）でTest set評価
+    # ===========================================
+    print("=" * 60)
+    print("【Best Model (Best Validation Acc)】")
+    print("=" * 60)
     model.load_state_dict(best_model_state)
 
-    # Test setでの詳細評価
-    test_loss, test_acc = evaluate(model, test_loader, loss_fn, device)
-    print(f"Test Loss: {test_loss:.4f} | Test Accuracy: {test_acc:.4f}")
+    best_test_loss, best_test_acc = evaluate(model, test_loader, loss_fn, device)
+    print(f"Test Loss: {best_test_loss:.4f} | Test Accuracy: {best_test_acc:.4f}")
 
-    detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
+    best_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
 
-    # 混同行列の表示
-    print("\n混同行列 (Test set):")
-    print(detailed_metrics['confusion_matrix'])
+    print("\n混同行列 (Test set - Best Model):")
+    print(best_detailed_metrics['confusion_matrix'])
 
-    # クラスごとのメトリクス表示
-    print("\nクラスごとの詳細メトリクス (Test set):")
-    report = detailed_metrics['classification_report']
+    print("\nクラスごとの詳細メトリクス (Test set - Best Model):")
+    best_report = best_detailed_metrics['classification_report']
     if class_names:
         for class_name in class_names:
-            if class_name in report:
-                metrics = report[class_name]
+            if class_name in best_report:
+                metrics = best_report[class_name]
                 print(f"  {class_name}: Precision={metrics['precision']:.4f}, "
                       f"Recall={metrics['recall']:.4f}, F1={metrics['f1-score']:.4f}")
 
-    # 全体メトリクスの表示
-    print(f"\nマクロ平均 F1: {detailed_metrics['f1_macro']:.4f}")
-    print(f"加重平均 F1: {detailed_metrics['f1_weighted']:.4f}")
-    print(f"Accuracy: {report['accuracy']:.4f}")
-    print(f"Circular MAE: {detailed_metrics['circular_mae']:.4f}")
+    print(f"\nマクロ平均 F1: {best_detailed_metrics['f1_macro']:.4f}")
+    print(f"加重平均 F1: {best_detailed_metrics['f1_weighted']:.4f}")
+    print(f"Accuracy: {best_report['accuracy']:.4f}")
+    print(f"Circular MAE: {best_detailed_metrics['circular_mae']:.4f}")
 
-    # 混同行列を画像として保存し、wandbにアップロード
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(detailed_metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues',
-                xticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
-                yticklabels=class_names if class_names else range(len(detailed_metrics['confusion_matrix'])),
-                ax=ax)
-    ax.set_xlabel('Predicted')
-    ax.set_ylabel('True')
-    ax.set_title('Confusion Matrix (Test set)')
+    # ベストモデルの混同行列を画像として保存
+    fig_best, ax_best = plt.subplots(figsize=(10, 8))
+    sns.heatmap(best_detailed_metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names if class_names else range(len(best_detailed_metrics['confusion_matrix'])),
+                yticklabels=class_names if class_names else range(len(best_detailed_metrics['confusion_matrix'])),
+                ax=ax_best)
+    ax_best.set_xlabel('Predicted')
+    ax_best.set_ylabel('True')
+    ax_best.set_title('Confusion Matrix (Test set - Best Model)')
+    wandb.log({"confusion_matrix_best": wandb.Image(fig_best)})
+    plt.close(fig_best)
 
-    # wandbに記録
-    wandb.log({"confusion_matrix": wandb.Image(fig)})
-    plt.close(fig)
+    # ===========================================
+    # 2. 最終エポックのモデルでTest set評価
+    # ===========================================
+    print("\n" + "=" * 60)
+    print("【Final Model (Last Epoch)】")
+    print("=" * 60)
+    model.load_state_dict(final_model_state)
 
-    # 最終結果をwandbのsummaryに記録
-    wandb.summary["best_val_acc"] = best_val_acc
-    wandb.summary["test_acc"] = test_acc
-    wandb.summary["test_loss"] = test_loss
-    wandb.summary["f1_macro"] = detailed_metrics['f1_macro']
-    wandb.summary["f1_weighted"] = detailed_metrics['f1_weighted']
-    wandb.summary["circular_mae"] = detailed_metrics['circular_mae']
+    final_test_loss, final_test_acc = evaluate(model, test_loader, loss_fn, device)
+    print(f"Test Loss: {final_test_loss:.4f} | Test Accuracy: {final_test_acc:.4f}")
 
-    # クラスごとのメトリクスもwandbに記録
+    final_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
+
+    print("\n混同行列 (Test set - Final Model):")
+    print(final_detailed_metrics['confusion_matrix'])
+
+    print("\nクラスごとの詳細メトリクス (Test set - Final Model):")
+    final_report = final_detailed_metrics['classification_report']
     if class_names:
         for class_name in class_names:
-            if class_name in report:
-                wandb.summary[f"{class_name}_f1"] = report[class_name]['f1-score']
-                wandb.summary[f"{class_name}_precision"] = report[class_name]['precision']
-                wandb.summary[f"{class_name}_recall"] = report[class_name]['recall']
+            if class_name in final_report:
+                metrics = final_report[class_name]
+                print(f"  {class_name}: Precision={metrics['precision']:.4f}, "
+                      f"Recall={metrics['recall']:.4f}, F1={metrics['f1-score']:.4f}")
 
-    return history, best_val_acc, test_acc
+    print(f"\nマクロ平均 F1: {final_detailed_metrics['f1_macro']:.4f}")
+    print(f"加重平均 F1: {final_detailed_metrics['f1_weighted']:.4f}")
+    print(f"Accuracy: {final_report['accuracy']:.4f}")
+    print(f"Circular MAE: {final_detailed_metrics['circular_mae']:.4f}")
+
+    # 最終エポックモデルの混同行列を画像として保存
+    fig_final, ax_final = plt.subplots(figsize=(10, 8))
+    sns.heatmap(final_detailed_metrics['confusion_matrix'], annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names if class_names else range(len(final_detailed_metrics['confusion_matrix'])),
+                yticklabels=class_names if class_names else range(len(final_detailed_metrics['confusion_matrix'])),
+                ax=ax_final)
+    ax_final.set_xlabel('Predicted')
+    ax_final.set_ylabel('True')
+    ax_final.set_title('Confusion Matrix (Test set - Final Model)')
+    wandb.log({"confusion_matrix_final": wandb.Image(fig_final)})
+    plt.close(fig_final)
+
+    # ===========================================
+    # wandbのsummaryに記録
+    # ===========================================
+    # ベストモデルの結果
+    wandb.summary["best_val_acc"] = best_val_acc
+    wandb.summary["best_test_acc"] = best_test_acc
+    wandb.summary["best_test_loss"] = best_test_loss
+    wandb.summary["best_f1_macro"] = best_detailed_metrics['f1_macro']
+    wandb.summary["best_f1_weighted"] = best_detailed_metrics['f1_weighted']
+    wandb.summary["best_circular_mae"] = best_detailed_metrics['circular_mae']
+
+    # 最終エポックモデルの結果
+    wandb.summary["final_val_acc"] = history['val_acc'][-1]
+    wandb.summary["final_test_acc"] = final_test_acc
+    wandb.summary["final_test_loss"] = final_test_loss
+    wandb.summary["final_f1_macro"] = final_detailed_metrics['f1_macro']
+    wandb.summary["final_f1_weighted"] = final_detailed_metrics['f1_weighted']
+    wandb.summary["final_circular_mae"] = final_detailed_metrics['circular_mae']
+
+    # クラスごとのメトリクス（ベストモデル）
+    if class_names:
+        for class_name in class_names:
+            if class_name in best_report:
+                wandb.summary[f"best_{class_name}_f1"] = best_report[class_name]['f1-score']
+                wandb.summary[f"best_{class_name}_precision"] = best_report[class_name]['precision']
+                wandb.summary[f"best_{class_name}_recall"] = best_report[class_name]['recall']
+            if class_name in final_report:
+                wandb.summary[f"final_{class_name}_f1"] = final_report[class_name]['f1-score']
+                wandb.summary[f"final_{class_name}_precision"] = final_report[class_name]['precision']
+                wandb.summary[f"final_{class_name}_recall"] = final_report[class_name]['recall']
+
+    return history, best_val_acc, best_test_acc, final_test_acc
 
 def main():
     parser = argparse.ArgumentParser()
