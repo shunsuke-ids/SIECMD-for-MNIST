@@ -143,7 +143,8 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
     }
 
 def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
-                     optimizer, device, epochs, loss_name, num_classes, class_names=None):
+                     optimizer, device, epochs, loss_name, num_classes, class_names=None,
+                     dataset_name=None, loss_key=None, save_dir='./saved_models'):
     print(f"\n{'='*60}")
     print(f"Training with {loss_name} for {epochs} epochs")
     print(f"{'='*60}\n")
@@ -334,6 +335,27 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
             if i in final_detailed_metrics['circular_mae_per_class']:
                 wandb.summary[f"final_{class_name}_cmae"] = final_detailed_metrics['circular_mae_per_class'][i]
 
+    # ===========================================
+    # モデルの保存
+    # ===========================================
+    if dataset_name and loss_key:
+        save_path = Path(save_dir)
+        save_path.mkdir(parents=True, exist_ok=True)
+
+        # ベストモデルを保存
+        best_model_path = save_path / f"{dataset_name}_{loss_key}_{epochs}ep_best.pth"
+        torch.save(best_model_state, best_model_path)
+        print(f"\nBest model saved: {best_model_path}")
+
+        # 最終エポックモデルを保存
+        final_model_path = save_path / f"{dataset_name}_{loss_key}_{epochs}ep_final.pth"
+        torch.save(final_model_state, final_model_path)
+        print(f"Final model saved: {final_model_path}")
+
+        # Wandbにモデルパスを記録
+        wandb.summary["best_model_path"] = str(best_model_path)
+        wandb.summary["final_model_path"] = str(final_model_path)
+
     return history, best_val_acc, best_test_acc, final_test_acc
 
 def main():
@@ -398,7 +420,8 @@ def main():
 
     train_and_evaluate(
         model, train_loader, val_loader, test_loader, loss_fn,
-        optimizer, device, args.epochs, loss_name, cfg['num_classes'], cfg['class_names']
+        optimizer, device, args.epochs, loss_name, cfg['num_classes'], cfg['class_names'],
+        dataset_name=args.dataset, loss_key=args.loss
     )
 
 if __name__ == '__main__':
