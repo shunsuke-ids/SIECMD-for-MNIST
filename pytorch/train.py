@@ -293,6 +293,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     # ===========================================
     # wandbのsummaryに記録
     # ===========================================
+    # 混同行列の数値データ（論文用に再描画可能）
+    wandb.summary["best_confusion_matrix"] = best_detailed_metrics['confusion_matrix'].tolist()
+    wandb.summary["final_confusion_matrix"] = final_detailed_metrics['confusion_matrix'].tolist()
+
     # ベストモデルの結果
     wandb.summary["best_val_acc"] = best_val_acc
     wandb.summary["best_test_acc"] = best_test_acc
