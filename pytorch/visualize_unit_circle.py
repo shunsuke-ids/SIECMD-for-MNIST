@@ -10,10 +10,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 import argparse
 from pathlib import Path
+
+
+def set_seed(seed=42):
+    """完全な再現性のためのシード設定"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 from models import SimpleCNN
 from datasets import get_phenocam_loaders
@@ -74,15 +85,20 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
     circle = Circle((0, 0), 1, fill=False, color='gray', linewidth=2, linestyle='--')
     ax.add_patch(circle)
 
-    # クラス位置をマーカーで表示
+    # クラス位置をマーカーとラベルで表示
     for i, (x, y) in enumerate(class_coords):
-        ax.scatter(x, y, c=[colors[i]], s=300, marker='s', edgecolors='black',
-                   linewidths=2, zorder=10)
-        # ラベルを少し外側に配置
-        label_x = x * 1.15
-        label_y = y * 1.15
+        # 円周上に小さな円（塗りつぶしなし）でクラス座標を表示
+        ax.scatter(x, y, facecolors='none', edgecolors='gray', s=50, linewidths=1, zorder=5)
+        # 色付き正方形を円の外側に配置
+        outer_x = x * 1.15
+        outer_y = y * 1.15
+        ax.scatter(outer_x, outer_y, c=[colors[i]], s=200, marker='s', edgecolors='black',
+                   linewidths=1.5, zorder=10)
+        # ラベルをさらに外側に配置
+        label_x = x * 1.30
+        label_y = y * 1.30
         ax.text(label_x, label_y, MONTH_NAMES[i], ha='center', va='center',
-                fontsize=12, fontweight='bold')
+                fontsize=20, fontweight='bold')
 
     # サンプル数を制限
     if len(pred_vectors) > max_samples:
@@ -100,32 +116,35 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
     ax.scatter(0, 0, c='black', s=100, marker='+', linewidths=2, zorder=5)
 
     # 軸の設定
-    ax.set_xlim(-1.4, 1.4)
-    ax.set_ylim(-1.4, 1.4)
+    ax.set_xlim(-1.5, 1.5)
+    ax.set_ylim(-1.5, 1.5)
     ax.set_aspect('equal')
     ax.axhline(y=0, color='lightgray', linestyle='-', linewidth=0.5)
     ax.axvline(x=0, color='lightgray', linestyle='-', linewidth=0.5)
-    ax.set_xlabel('x', fontsize=12)
-    ax.set_ylabel('y', fontsize=12)
+    ax.set_xlabel('x', fontsize=20)
+    ax.set_ylabel('y', fontsize=20)
+    ax.set_xticks([-1, 0, 1])
+    ax.set_yticks([-1, 0, 1])
+    ax.tick_params(axis='both', labelsize=16)
 
-    title = f'Unit Circle - Epoch {epoch}'
-    if loss_name:
-        title += f' ({loss_name})'
-    ax.set_title(title, fontsize=14)
+    # title = f'Unit Circle - Epoch {epoch}'
+    # if loss_name:
+    #     title += f' ({loss_name})'
+    # ax.set_title(title, fontsize=14)
 
     # 凡例
-    legend_elements = [plt.Line2D([0], [0], marker='o', color='w',
-                                   markerfacecolor=colors[i], markersize=10,
-                                   label=MONTH_NAMES[i])
-                       for i in range(num_classes)]
-    ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1),
-              fontsize=10, title='True Class')
+    # legend_elements = [plt.Line2D([0], [0], marker='o', color='w',
+    #                                markerfacecolor=colors[i], markersize=10,
+    #                                label=MONTH_NAMES[i])
+    #                    for i in range(num_classes)]
+    # ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1),
+    #           fontsize=14, title='True Class', title_fontsize=14)
 
     plt.tight_layout()
 
     # 保存
-    output_path = output_dir / f'unit_circle_epoch_{epoch:03d}.png'
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    output_path = output_dir / f'unit_circle_epoch_{epoch:03d}.pdf'
+    plt.savefig(output_path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {output_path}")
 
@@ -150,6 +169,24 @@ def train_epoch(model, loader, loss_fn, optimizer, device):
     return total_loss / total, correct / total
 
 
+def evaluate(model, loader, loss_fn, device):
+    """評価"""
+    model.eval()
+    total_loss, correct, total = 0, 0, 0
+
+    with torch.no_grad():
+        for inputs, labels in loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            logits = model(inputs)
+            loss = loss_fn(logits, labels)
+
+            total_loss += loss.item() * inputs.size(0)
+            correct += (logits.argmax(dim=1) == labels).sum().item()
+            total += inputs.size(0)
+
+    return total_loss / total, correct / total
+
+
 def main():
     parser = argparse.ArgumentParser(description='単位円上でのベクトル可視化')
     parser.add_argument('--loss', type=str, choices=LOSS_FUNCTIONS.keys(),
@@ -167,6 +204,8 @@ def main():
                         help='クラスごとのサンプル数制限')
 
     args = parser.parse_args()
+
+    set_seed()
 
     # 出力ディレクトリ作成
     output_dir = Path(args.output_dir)
@@ -211,7 +250,10 @@ def main():
     # 学習ループ
     for epoch in range(1, args.epochs + 1):
         train_loss, train_acc = train_epoch(model, train_loader, loss_fn, optimizer, device)
-        print(f"Epoch {epoch:2d}/{args.epochs} | Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
+
+        # 毎エポックvalidationを実行（train.pyと乱数消費パターンを合わせるため）
+        val_loss, val_acc = evaluate(model, val_loader, loss_fn, device)
+        print(f"Epoch {epoch:2d}/{args.epochs} | Train: {train_loss:.4f}/{train_acc:.4f} | Val: {val_loss:.4f}/{val_acc:.4f}")
 
         # 指定エポックで可視化
         if epoch in args.plot_epochs:
