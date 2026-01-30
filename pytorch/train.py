@@ -144,13 +144,18 @@ def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
 
 def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
                      optimizer, device, epochs, loss_name, num_classes, class_names=None,
-                     dataset_name=None, loss_key=None, save_dir='./saved_models'):
+                     dataset_name=None, loss_key=None, save_dir='./saved_models', patience=None):
     print(f"\n{'='*60}")
     print(f"Training with {loss_name} for {epochs} epochs")
+    if patience:
+        print(f"Early Stopping: patience={patience}")
     print(f"{'='*60}\n")
 
     best_val_acc = 0.0
+    best_val_loss = float('inf')
     best_model_state = None
+    best_epoch = 0
+    early_stop_counter = 0
     history = {
         'train_loss': [], 'train_acc': [],
         'val_loss': [], 'val_acc': []
@@ -162,10 +167,18 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
         train_loss, train_acc = train_epoch(model, train_loader, loss_fn, optimizer, device)
         val_loss, val_acc = evaluate(model, val_loader, loss_fn, device)
 
-        # ベストモデルの保存
+        # ベストモデルの保存（Accuracyで判定）
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_model_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch + 1
+
+        # Early Stopping（Lossで判定）
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            early_stop_counter = 0
+        else:
+            early_stop_counter += 1
 
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
@@ -182,10 +195,18 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
 
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
               f"Train: {train_loss:.4f}/{train_acc:.4f} | "
-              f"Val: {val_loss:.4f}/{val_acc:.4f} | Best Val: {best_val_acc:.4f}")
+              f"Val: {val_loss:.4f}/{val_acc:.4f} | Best Acc: {best_val_acc:.4f} | Best Loss: {best_val_loss:.4f}")
 
+        # Early Stopping判定
+        if patience and early_stop_counter >= patience:
+            print(f"\nEarly Stopping at epoch {epoch+1} (no improvement in val_loss for {patience} epochs)")
+            break
+
+    actual_epochs = len(history['train_loss'])
     print(f"\n{'='*60}")
-    print(f"Best Validation Accuracy: {best_val_acc:.4f}")
+    print(f"Training finished at epoch {actual_epochs}/{epochs}")
+    print(f"Best Validation Accuracy: {best_val_acc:.4f} (epoch {best_epoch})")
+    print(f"Best Validation Loss: {best_val_loss:.4f}")
     print(f"{'='*60}\n")
 
     # 最終エポックのモデルを保存
@@ -294,7 +315,12 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     # ===========================================
     # wandbのsummaryに記録
     # ===========================================
-    # 混同行列の数値データ（論文用に再描画可能）
+    # 学習情報
+    wandb.summary["best_epoch"] = best_epoch
+    wandb.summary["actual_epochs"] = actual_epochs
+    wandb.summary["early_stopped"] = actual_epochs < epochs
+
+    # 混同行列の数値データ
     wandb.summary["best_confusion_matrix"] = best_detailed_metrics['confusion_matrix'].tolist()
     wandb.summary["final_confusion_matrix"] = final_detailed_metrics['confusion_matrix'].tolist()
 
@@ -365,6 +391,8 @@ def main():
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--patience', type=int, default=8,
+                        help='Early stopping patience (default: None = no early stopping)')
     parser.add_argument('--limit_per_phase', type=int, default=None)
 
     args = parser.parse_args()
@@ -421,7 +449,7 @@ def main():
     train_and_evaluate(
         model, train_loader, val_loader, test_loader, loss_fn,
         optimizer, device, args.epochs, loss_name, cfg['num_classes'], cfg['class_names'],
-        dataset_name=args.dataset, loss_key=args.loss
+        dataset_name=args.dataset, loss_key=args.loss, patience=args.patience
     )
 
 if __name__ == '__main__':
