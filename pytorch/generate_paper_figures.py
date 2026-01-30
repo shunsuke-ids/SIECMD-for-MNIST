@@ -73,10 +73,10 @@ def plot_confusion_matrix_paper(cm, class_names, title, output_path, figsize=Non
 
     ax.set_xlabel('Predicted', fontsize=14, fontweight='bold')
     ax.set_ylabel('True', fontsize=14, fontweight='bold')
-    ax.set_title(title, fontsize=16, fontweight='bold', pad=10)
+    # ax.set_title(title, fontsize=16, fontweight='bold', pad=10)
 
     # ラベルの回転
-    plt.xticks(rotation=45, ha='right')
+    plt.xticks(rotation=0)
     plt.yticks(rotation=0)
 
     plt.tight_layout()
@@ -158,7 +158,7 @@ def generate_figures_from_wandb(project, output_dir, entity=None, run_id=None):
         title = f"{dataset.upper()} - {loss_display}"
 
         # ファイル名
-        filename = f"confusion_matrix_{dataset}_{loss}.pdf"
+        filename = f"cm_{dataset}_{loss}.pdf"
         output_path = output_dir / filename
 
         plot_confusion_matrix_paper(cm, class_names, title, output_path)
