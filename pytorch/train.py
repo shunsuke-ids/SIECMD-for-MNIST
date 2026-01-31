@@ -394,10 +394,11 @@ def main():
     parser.add_argument('--patience', type=int, default=8,
                         help='Early stopping patience (default: None = no early stopping)')
     parser.add_argument('--limit_per_phase', type=int, default=None)
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
 
     args = parser.parse_args()
 
-    set_seed()
+    set_seed(args.seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
@@ -433,7 +434,7 @@ def main():
         project="ce_vs_svl",
         group=args.dataset,
         tags=[args.loss],
-        name=f"{args.loss}_{args.lr}lr_{args.epochs}ep",
+        name=f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}",
         config=vars(args)
     )
 
