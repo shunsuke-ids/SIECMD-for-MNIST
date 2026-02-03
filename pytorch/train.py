@@ -122,21 +122,28 @@ def evaluate(model, loader, loss_fn, device, num_classes=None, loss_key=None):
 
     return total_loss / total, correct / total
 
-def evaluate_detailed(model, loader, device, num_classes, class_names=None, loss_key=None):
+def evaluate_detailed(model, loader, loss_fn, device, num_classes, class_names=None, loss_key=None):
     model.eval()
     all_preds = []
     all_labels = []
+    total_loss, correct, total = 0, 0, 0
     use_vector_pred = loss_key in VECTOR_LOSSES
 
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device), labels.to(device)
             logits = model(inputs)
+
+            loss = loss_fn(logits, labels)
+            total_loss += loss.item() * inputs.size(0)
+
             if use_vector_pred:
                 preds = get_vector_predictions(logits, num_classes, device)
             else:
                 preds = logits.argmax(dim=1)
 
+            correct += (preds == labels).sum().item()
+            total += inputs.size(0)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 
@@ -156,6 +163,8 @@ def evaluate_detailed(model, loader, device, num_classes, class_names=None, loss
     circ_mae_per_class = circular_mae_per_class(all_preds, all_labels, num_classes)
 
     return {
+        'loss': total_loss / total,
+        'accuracy': correct / total,
         'confusion_matrix': cm,
         'classification_report': report,
         'f1_macro': f1_macro,
@@ -245,10 +254,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print("=" * 60)
     model.load_state_dict(best_model_state)
 
-    best_test_loss, best_test_acc = evaluate(model, test_loader, loss_fn, device, num_classes, loss_key)
+    best_detailed_metrics = evaluate_detailed(model, test_loader, loss_fn, device, num_classes, class_names, loss_key)
+    best_test_loss = best_detailed_metrics['loss']
+    best_test_acc = best_detailed_metrics['accuracy']
     print(f"Test Loss: {best_test_loss:.4f} | Test Accuracy: {best_test_acc:.4f}")
-
-    best_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names, loss_key)
 
     print("\n混同行列 (Test set - Best Model):")
     print(best_detailed_metrics['confusion_matrix'])
@@ -295,10 +304,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print("=" * 60)
     model.load_state_dict(final_model_state)
 
-    final_test_loss, final_test_acc = evaluate(model, test_loader, loss_fn, device, num_classes, loss_key)
+    final_detailed_metrics = evaluate_detailed(model, test_loader, loss_fn, device, num_classes, class_names, loss_key)
+    final_test_loss = final_detailed_metrics['loss']
+    final_test_acc = final_detailed_metrics['accuracy']
     print(f"Test Loss: {final_test_loss:.4f} | Test Accuracy: {final_test_acc:.4f}")
-
-    final_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names, loss_key)
 
     print("\n混同行列 (Test set - Final Model):")
     print(final_detailed_metrics['confusion_matrix'])
