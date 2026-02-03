@@ -376,25 +376,6 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     wandb.summary["final_circular_mae"] = final_detailed_metrics['circular_mae']
     wandb.summary["final_circular_mae_macro"] = final_detailed_metrics['circular_mae_macro']
 
-    # クラスごとのメトリクス
-    if class_names:
-        for i, class_name in enumerate(class_names):
-            # ベストモデル
-            if class_name in best_report:
-                wandb.summary[f"best_{class_name}_f1"] = best_report[class_name]['f1-score']
-                wandb.summary[f"best_{class_name}_precision"] = best_report[class_name]['precision']
-                wandb.summary[f"best_{class_name}_recall"] = best_report[class_name]['recall']
-            if i in best_detailed_metrics['circular_mae_per_class']:
-                wandb.summary[f"best_{class_name}_cmae"] = best_detailed_metrics['circular_mae_per_class'][i]
-
-            # 最終エポックモデル
-            if class_name in final_report:
-                wandb.summary[f"final_{class_name}_f1"] = final_report[class_name]['f1-score']
-                wandb.summary[f"final_{class_name}_precision"] = final_report[class_name]['precision']
-                wandb.summary[f"final_{class_name}_recall"] = final_report[class_name]['recall']
-            if i in final_detailed_metrics['circular_mae_per_class']:
-                wandb.summary[f"final_{class_name}_cmae"] = final_detailed_metrics['circular_mae_per_class'][i]
-
     # ===========================================
     # モデルの保存
     # ===========================================
