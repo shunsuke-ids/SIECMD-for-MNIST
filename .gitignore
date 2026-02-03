@@ -98,6 +98,7 @@ tmp/
 
 *.png
 *.pdf
+*.csv
 
 saved_models/
 # If you later want to version one specific weight file, remove 'weights/' above
