@@ -38,6 +38,22 @@ LOSS_FUNCTIONS = {
     'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss)
 }
 
+VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl']
+
+def get_vector_predictions(logits, num_classes, device):
+    """ベクトルベースの予測（距離計算）"""
+    angles = torch.arange(num_classes, dtype=torch.float32, device=device) * (2.0 * np.pi / num_classes)
+    class_coords = torch.stack([torch.cos(angles), torch.sin(angles)], dim=1)  # (num_classes, 2)
+
+    probs = nn.functional.softmax(logits, dim=1)  # (batch, num_classes)
+    pred_vector = torch.matmul(probs, class_coords)  # (batch, 2)
+
+    # 各クラスベクトルとの距離を計算
+    distances = torch.cdist(pred_vector, class_coords)  # (batch, num_classes)
+    preds = distances.argmin(dim=1)
+
+    return preds
+
 def set_seed(seed=42):
     """完全な再現性のためのシード設定"""
     # Python標準の乱数
@@ -84,9 +100,10 @@ def train_epoch(model, loader, loss_fn, optimizer, device):
     
     return total_loss / total, correct / total # 平均損失と精度を返す
 
-def evaluate(model, loader, loss_fn, device):
+def evaluate(model, loader, loss_fn, device, num_classes=None, loss_key=None):
     model.eval()
     total_loss, correct, total = 0, 0, 0
+    use_vector_pred = loss_key in VECTOR_LOSSES and num_classes is not None
 
     with torch.no_grad():
         for inputs, labels in loader:
@@ -96,21 +113,29 @@ def evaluate(model, loader, loss_fn, device):
             loss = loss_fn(logits, labels)
 
             total_loss += loss.item() * inputs.size(0)
-            correct += (logits.argmax(dim=1) == labels).sum().item()
+            if use_vector_pred:
+                preds = get_vector_predictions(logits, num_classes, device)
+            else:
+                preds = logits.argmax(dim=1)
+            correct += (preds == labels).sum().item()
             total += inputs.size(0)
 
     return total_loss / total, correct / total
 
-def evaluate_detailed(model, loader, device, num_classes,  class_names=None):
+def evaluate_detailed(model, loader, device, num_classes, class_names=None, loss_key=None):
     model.eval()
     all_preds = []
     all_labels = []
+    use_vector_pred = loss_key in VECTOR_LOSSES
 
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device), labels.to(device)
             logits = model(inputs)
-            preds = logits.argmax(dim=1)
+            if use_vector_pred:
+                preds = get_vector_predictions(logits, num_classes, device)
+            else:
+                preds = logits.argmax(dim=1)
 
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
@@ -165,7 +190,7 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
         start = time.time()
 
         train_loss, train_acc = train_epoch(model, train_loader, loss_fn, optimizer, device)
-        val_loss, val_acc = evaluate(model, val_loader, loss_fn, device)
+        val_loss, val_acc = evaluate(model, val_loader, loss_fn, device, num_classes, loss_key)
 
         # ベストモデルの保存（Accuracyで判定）
         if val_acc > best_val_acc:
@@ -220,10 +245,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print("=" * 60)
     model.load_state_dict(best_model_state)
 
-    best_test_loss, best_test_acc = evaluate(model, test_loader, loss_fn, device)
+    best_test_loss, best_test_acc = evaluate(model, test_loader, loss_fn, device, num_classes, loss_key)
     print(f"Test Loss: {best_test_loss:.4f} | Test Accuracy: {best_test_acc:.4f}")
 
-    best_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
+    best_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names, loss_key)
 
     print("\n混同行列 (Test set - Best Model):")
     print(best_detailed_metrics['confusion_matrix'])
@@ -270,10 +295,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     print("=" * 60)
     model.load_state_dict(final_model_state)
 
-    final_test_loss, final_test_acc = evaluate(model, test_loader, loss_fn, device)
+    final_test_loss, final_test_acc = evaluate(model, test_loader, loss_fn, device, num_classes, loss_key)
     print(f"Test Loss: {final_test_loss:.4f} | Test Accuracy: {final_test_acc:.4f}")
 
-    final_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names)
+    final_detailed_metrics = evaluate_detailed(model, test_loader, device, num_classes, class_names, loss_key)
 
     print("\n混同行列 (Test set - Final Model):")
     print(final_detailed_metrics['confusion_matrix'])
