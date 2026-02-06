@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # 実験設定
-DATASETS=("jurkat7" "jurkat4" "sysmex7" "sysmex4" "phenocam_monthly")
+DATASETS=("phenocam_monthly")
 LOSSES=("ce" "msevl")
-SEEDS=(0 1 2 3 4)
+SEEDS=(5 6 7 8 9)
 EPOCHS=100
 
 # 結果ファイル
