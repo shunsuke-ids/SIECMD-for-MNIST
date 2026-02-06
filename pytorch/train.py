@@ -2,12 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import argparse
-import json
 import time
 import wandb
 from pathlib import Path
 import numpy as np
-import random
 import copy
 from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
@@ -55,30 +53,12 @@ def get_vector_predictions(logits, num_classes, device):
     return preds
 
 def set_seed(seed=42):
-    """完全な再現性のためのシード設定"""
-    # Python標準の乱数
-    random.seed(seed)
-
-    # Numpyの乱数
-    np.random.seed(seed)
-
-    # PyTorchの乱数
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-    # CuDNNの決定的動作を有効化
-    torch.backends.cudnn.deterministic = True
+    """再現性のためのシード設定"""
+    np.random.seed(seed)  # train_test_split等で使用
+    torch.manual_seed(seed)  # モデル重み初期化、DataLoaderシャッフル
+    torch.cuda.manual_seed_all(seed)  # GPU演算
+    torch.backends.cudnn.deterministic = True  # CuDNN決定的動作
     torch.backends.cudnn.benchmark = False
-
-    # PyTorch 1.8以降: 決定的アルゴリズムを使用
-    # 注意: 一部の操作で性能が低下する可能性があります
-    # torch.use_deterministic_algorithms(True)  # 必要に応じてコメント解除
-
-def seed_worker(_worker_id):
-    """DataLoaderのworkerごとにシードを設定"""
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
 
 def train_epoch(model, loader, loss_fn, optimizer, device):
     model.train()
