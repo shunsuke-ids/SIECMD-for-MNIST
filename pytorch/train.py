@@ -437,7 +437,7 @@ def main():
 
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
     if args.loss in ['svl', 'nsvl', 'msevl', 'eucvl']:
-        loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
+        loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device) # ベクトル損失はclass_coordsをGPUに送る必要がある
     else:
         loss_fn = loss_fn_class()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
