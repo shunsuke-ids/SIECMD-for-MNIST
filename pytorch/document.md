@@ -77,6 +77,23 @@ main()
 | `evaluate_detailed()` | 詳細評価。混同行列、F1スコア、cMAE等を計算 |
 | `get_vector_predictions()` | ベクトル損失用の予測関数。argmaxではなく距離最小で予測 |
 
+### Early Stopping と Best Model 選択
+
+2つの異なる基準を使い分けている。
+
+| 判定 | 基準 | 条件 |
+|------|------|------|
+| Best Model 保存 | **val_acc** | 過去最高を更新したときにモデルを保存 |
+| Early Stopping | **val_loss** | `patience` エポック連続で改善しなければ学習を打ち切り |
+
+### オプティマイザ
+
+| 項目 | 値 |
+|------|-----|
+| アルゴリズム | Adam |
+| 学習率 | 0.001（`--lr` で変更可） |
+| スケジューラ | なし（固定学習率） |
+
 ### ベクトル予測の仕組み
 
 ベクトル損失（svl, nsvl, msevl, eucvl）使用時:
@@ -191,11 +208,49 @@ true_vector = true_onehot @ class_coords  # 真のクラス座標
 
 ### データ分割
 
-| データセット | 分割方法 | 比率 |
-|-------------|---------|------|
-| mnist | 組込み | train / test |
-| sysmex (3cls) | ディレクトリ分割済み | train / test |
-| その他 | train_test_split | 70% / 15% / 15% (train/val/test) |
+| データセット | 分割方法 | 比率 | Stratify | Val有無 |
+|-------------|---------|------|----------|---------|
+| mnist | 組込み（torchvision） | 60,000 / 10,000 | - | なし（testで代用） |
+| sysmex (3cls) | ディレクトリ分割済み | train/ / test/ | - | なし（testで代用） |
+| jurkat, jurkat4, jurkat7 | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
+| sysmex4, sysmex7 | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
+| phenocam, phenocam_monthly | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
+
+> val_loader がないデータセット（mnist, sysmex 3cls）では、`val_loader = test_loader` として代用される（`train.py` L421-424）。
+
+#### 70/15/15 分割の実装詳細（jurkat4/7, sysmex4/7, phenocam_monthly 共通）
+
+5つのデータローダはすべて同一の2段階分割を使用している。
+
+```python
+# 第1段階: 全データ → train(70%) + temp(30%)
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
+# 第2段階: temp(30%) → val(15%) + test(15%)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+)
+```
+
+| 項目 | 値 |
+|------|-----|
+| random_state | 42（固定） |
+| stratify | あり（クラスラベル `y` で層化抽出） |
+| 分割タイミング | ラベルマージ（3/4クラス化）の**後** |
+
+- **stratify=y**: 各クラスの比率が train/val/test で均等に保たれる
+- ラベルマージ後に分割するため、マージ後のクラス比率に基づいて層化される
+
+#### 各データローダの呼び出し対応
+
+| train.py での指定 | 呼び出される関数 | 引数 |
+|-------------------|-----------------|------|
+| `--dataset jurkat4` | `get_jurkat_loaders()` | `num_classes=4` |
+| `--dataset jurkat7` | `get_jurkat_loaders()` | `num_classes=7` |
+| `--dataset sysmex4` | `get_sysmex_7class_loaders()` | `num_classes=4` |
+| `--dataset sysmex7` | `get_sysmex_7class_loaders()` | `num_classes=7` |
+| `--dataset phenocam_monthly` | `get_phenocam_loaders()` | `label_type='month'` |
 
 ### ラベルマッピング
 
