@@ -95,10 +95,10 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
         ax.scatter(outer_x, outer_y, c=[colors[i]], s=200, marker='s', edgecolors='black',
                    linewidths=1.5, zorder=10)
         # ラベルをさらに外側に配置
-        label_x = x * 1.30
-        label_y = y * 1.30
+        label_x = x * 1.36
+        label_y = y * 1.36
         ax.text(label_x, label_y, MONTH_NAMES[i], ha='center', va='center',
-                fontsize=20, fontweight='bold')
+                fontsize=36, fontweight='bold')
 
     # サンプル数を制限
     if len(pred_vectors) > max_samples:
@@ -143,7 +143,7 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
     plt.tight_layout()
 
     # 保存
-    output_path = output_dir / f'unit_circle_epoch_{epoch:03d}.pdf'
+    output_path = output_dir / f'unit_circle_{loss_name}_epoch_{epoch:03d}.pdf'
     plt.savefig(output_path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {output_path}")
