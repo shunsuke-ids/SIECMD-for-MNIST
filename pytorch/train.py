@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss
+from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss
 from models import SimpleCNN
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class
@@ -33,10 +33,11 @@ LOSS_FUNCTIONS = {
     'svl': ('SoftmaxVectorLoss', SoftmaxVectorLoss),
     'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss),
     'msevl': ('MSEVectorLoss', MSEVectorLoss),
-    'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss)
+    'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss),
+    'arcvl': ('ArcDistanceVectorLoss', ArcDistanceVectorLoss)
 }
 
-VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl']
+VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
 
 def get_vector_predictions(logits, num_classes, device):
     """ベクトルベースの予測（距離計算）"""
@@ -436,7 +437,7 @@ def main():
     model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
 
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    if args.loss in ['svl', 'nsvl', 'msevl', 'eucvl']:
+    if args.loss in VECTOR_LOSSES:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device) # ベクトル損失はclass_coordsをGPUに送る必要がある
     else:
         loss_fn = loss_fn_class()
