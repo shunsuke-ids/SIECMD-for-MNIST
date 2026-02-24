@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from losses import VonMisesHead
 
 class SimpleCNN(nn.Module):
     def __init__(self, input_channels=1, num_classes=10, image_size=28):
@@ -38,3 +39,19 @@ class SimpleCNN(nn.Module):
         x = self.fc3(x)
 
         return x
+
+class VonMisesModel(nn.Module):
+    """SimpleCNN（スカラー出力）+ VonMisesHead の組み合わせモデル
+
+    SimpleCNNをnum_classes=1で使いバックボーンを共有する。
+    出力形状は (batch, num_classes) で通常のCrossEntropyLossと互換。
+    """
+    def __init__(self, input_channels=1, num_classes=10, image_size=28):
+        super().__init__()
+        self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        self.von_mises_head = VonMisesHead(num_classes)
+
+    def forward(self, x):
+        z = self.backbone(x)                    # (batch, 1)
+        logits = self.von_mises_head(z)         # (batch, num_classes)
+        return logits
