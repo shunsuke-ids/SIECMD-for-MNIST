@@ -89,7 +89,7 @@ def print_statistics(z_values, labels, num_classes, class_names, mu_c, kappa):
         print(f"{class_names[c]:>10} | {mu_c[c]:>8.3f} | {z_mean:>8.3f} | {z_median:>10.3f} | {diff:>10.3f}")
 
 
-def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir):
+def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem):
     """クラスごとのz分布ヒストグラム（μ_cを縦線で表示）"""
     cmap = plt.cm.hsv
     colors = [cmap(i / num_classes) for i in range(num_classes)]
@@ -121,13 +121,13 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
     ax.legend(fontsize=11)
 
     plt.tight_layout()
-    path = output_dir / 'z_histogram.pdf'
+    path = output_dir / f'z_histogram_{model_stem}.pdf'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {path}")
 
 
-def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, max_samples=300):
+def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, max_samples=300):
     """zを単位円上の点として可視化（μ_cを星マークで表示）"""
     cmap = plt.cm.hsv
     colors = [cmap(i / num_classes) for i in range(num_classes)]
@@ -165,7 +165,7 @@ def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, 
     ax.legend(fontsize=11, loc='upper right')
 
     plt.tight_layout()
-    path = output_dir / 'z_unit_circle.pdf'
+    path = output_dir / f'z_unit_circle_{model_stem}.pdf'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {path}")
@@ -191,6 +191,7 @@ def main():
     mu_c = np.arange(num_classes) * (2.0 * np.pi / num_classes)
 
     # モデルのロード
+    model_stem = Path(args.model_path).stem  # 例: "jurkat_vmce_100ep_best"
     model = VonMisesModel(cfg['channels'], num_classes, cfg['size']).to(device) # モデルの初期化（アーキテクチャはデータセットに合わせて）
     state_dict = torch.load(args.model_path, map_location=device) # 学習済みモデルの重みをロード
     model.load_state_dict(state_dict) # モデルに重みを適用
@@ -212,8 +213,8 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir)
-    plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir)
+    plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
+    plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
 
     print("\nDone!")
 
