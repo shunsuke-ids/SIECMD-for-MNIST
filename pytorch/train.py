@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss
-from models import SimpleCNN
+from models import SimpleCNN, VonMisesModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class
 
@@ -34,7 +34,8 @@ LOSS_FUNCTIONS = {
     'nsvl': ('NormalizedSoftmaxVectorLoss', NormalizedSoftmaxVectorLoss),
     'msevl': ('MSEVectorLoss', MSEVectorLoss),
     'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss),
-    'arcvl': ('ArcDistanceVectorLoss', ArcDistanceVectorLoss)
+    'arcvl': ('ArcDistanceVectorLoss', ArcDistanceVectorLoss),
+    'vmce': ('VonMisesClassifier', nn.CrossEntropyLoss),
 }
 
 VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
@@ -201,16 +202,26 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
         history['val_acc'].append(val_acc)
 
         # エポックごとにwandbにログを記録
-        wandb.log({
+        log_dict = {
             "train_loss": train_loss,
             "train_acc": train_acc,
             "val_loss": val_loss,
             "val_acc": val_acc
-        })
+        }
+
+        # Von Misesの場合はκをログ出力
+        kappa_str = ""
+        if hasattr(model, 'von_mises_head'):
+            kappa_val = model.von_mises_head.kappa.item()
+            log_dict["kappa"] = kappa_val
+            kappa_str = f" | κ={kappa_val:.4f}"
+
+        wandb.log(log_dict)
 
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
               f"Train: {train_loss:.4f}/{train_acc:.4f} | "
-              f"Val: {val_loss:.4f}/{val_acc:.4f} | Best Acc: {best_val_acc:.4f} | Best Loss: {best_val_loss:.4f}")
+              f"Val: {val_loss:.4f}/{val_acc:.4f} | Best Acc: {best_val_acc:.4f} | Best Loss: {best_val_loss:.4f}"
+              + kappa_str)
 
         # Early Stopping判定
         if patience and early_stop_counter >= patience:
@@ -334,6 +345,8 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     wandb.summary["best_epoch"] = best_epoch
     wandb.summary["actual_epochs"] = actual_epochs
     wandb.summary["early_stopped"] = actual_epochs < epochs
+    if hasattr(model, 'von_mises_head'):
+        wandb.summary["final_kappa"] = model.von_mises_head.kappa.item()
 
     # 混同行列の数値データ
     wandb.summary["best_confusion_matrix"] = best_detailed_metrics['confusion_matrix'].tolist()
@@ -434,7 +447,10 @@ def main():
         config=vars(args)
     )
 
-    model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+    if args.loss == 'vmce':
+        model = VonMisesModel(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+    else:
+        model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
 
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
     if args.loss in VECTOR_LOSSES:
