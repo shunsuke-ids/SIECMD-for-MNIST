@@ -153,9 +153,12 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
     # 可視化時だけ[0, 2π]に巻き戻す（学習・推論ではそのままでよい）
     z_wrapped = z_values % (2 * np.pi)
 
+    # 全クラス共通の bin 境界を [0, 2π] で事前に計算
+    bin_edges = np.linspace(0, 2 * np.pi, 21)  # 20本の棒 → 境界点は21個
+
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_wrapped[mask], bins=20,
+        ax.hist(z_wrapped[mask], bins=bin_edges,
                 alpha=0.5,       # 半透明にしてクラス間の重なりを見えるように
                 color=colors[c],
                 label=class_names[c],
