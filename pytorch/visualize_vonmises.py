@@ -198,12 +198,13 @@ def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, 
         ax.scatter(np.cos(z_c), np.sin(z_c), c=[colors[c]], s=15,
                    alpha=0.4, label=class_names[c])
 
-    # μ_cの位置を星マークで表示
+    # μ_cの位置を星マークで表示（半径1.12の位置に配置してサンプル点と重ならないようにする）
+    star_r = 1.12
     for c in range(num_classes):
-        xm, ym = np.cos(mu_c[c]), np.sin(mu_c[c])  # μ_cを単位円上の座標に変換
+        xm, ym = np.cos(mu_c[c]) * star_r, np.sin(mu_c[c]) * star_r
         ax.scatter(xm, ym, c=[colors[c]], s=250, marker='*',
                    edgecolors='black', linewidths=1, zorder=10)  # zorder=10で他の点より手前に描画
-        ax.text(xm * 1.22, ym * 1.22, class_names[c],  # 1.22倍の位置にラベル（円の外側）
+        ax.text(xm * (1.22 / star_r), ym * (1.22 / star_r), class_names[c],  # 1.22倍の位置にラベル（円の外側）
                 ha='center', va='center', fontsize=11, fontweight='bold')
 
     ax.set_xlim(-1.5, 1.5)
