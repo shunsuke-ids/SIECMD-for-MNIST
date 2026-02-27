@@ -71,6 +71,19 @@ def collect_z_values(model, loader, device):
 def print_statistics(z_values, labels, num_classes, class_names, mu_c, kappa):
     """クラスごとのz統計とμ_cとの対応を表示"""
     print(f"\nκ = {kappa:.4f}")
+
+    # 生のz値の全体統計
+    print(f"\n【生のz値の範囲（mod 2π なし）】")
+    print(f"  全体: min={z_values.min():.3f}, max={z_values.max():.3f}, "
+          f"mean={z_values.mean():.3f}, std={z_values.std():.3f}")
+    print(f"  {'クラス':>10} | {'min':>8} | {'max':>8} | {'mean':>8} | {'std':>8}")
+    print("  " + "-" * 52)
+    for c in range(num_classes):
+        mask = labels == c # クラスcのサンプルだけTrueになるブール配列（例: labels=[0,1,0,2], c=0 → mask=[True, False, True, False]）
+        z_c = z_values[mask] # ブール配列でzを絞り込み、クラスcのzだけ抽出（例: z_values=[0.1, 6.2, 0.3, 12.5], mask=[True, False, True, False] → z_c=[0.1, 0.3]）
+        print(f"  {class_names[c]:>10} | {z_c.min():>8.3f} | {z_c.max():>8.3f} | "
+              f"{z_c.mean():>8.3f} | {z_c.std():>8.3f}")
+
     print(f"\nクラスごとの z 統計 (z は mod 2π で表示)")
     print(f"{'クラス':>10} | {'μ_c':>8} | {'z 平均':>8} | {'z 中央値':>10} | {'μ_cとの差':>10}")
     print("-" * 60)
@@ -87,6 +100,33 @@ def print_statistics(z_values, labels, num_classes, class_names, mu_c, kappa):
         diff = abs(z_mean - mu_c[c])
         diff = min(diff, 2 * np.pi - diff)
         print(f"{class_names[c]:>10} | {mu_c[c]:>8.3f} | {z_mean:>8.3f} | {z_median:>10.3f} | {diff:>10.3f}")
+
+
+def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem):
+    """生のz値（mod 2π なし）のヒストグラム"""
+    cmap = plt.cm.hsv
+    colors = [cmap(i / num_classes) for i in range(num_classes)]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for c in range(num_classes):
+        mask = labels == c
+        ax.hist(z_values[mask], bins=60,
+                alpha=0.5,
+                color=colors[c],
+                label=class_names[c],
+                density=True)
+
+    ax.set_xlabel('z (raw, no mod)', fontsize=13)
+    ax.set_ylabel('Density', fontsize=13)
+    ax.set_title(f'Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
+    ax.legend(fontsize=11)
+
+    plt.tight_layout()
+    path = output_dir / f'z_raw_histogram_{model_stem}.pdf'
+    plt.savefig(path, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {path}")
 
 
 def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem):
@@ -213,6 +253,7 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem)
     plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
     plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
 
