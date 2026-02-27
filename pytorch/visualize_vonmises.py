@@ -117,14 +117,17 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
 
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_values[mask], bins=bin_edges,  # 共通の境界を渡すことで全クラスの棒幅を統一
+        z_c = z_values[mask]
+        # weights で各サンプルを「1 / クラスのサンプル数」にすると棒の高さの合計が1になる（relative frequency）
+        weights = np.ones(len(z_c)) / len(z_c)
+        ax.hist(z_c, bins=bin_edges,  # 共通の境界を渡すことで全クラスの棒幅を統一
+                weights=weights,
                 alpha=0.5,        # 透明度50%：複数クラスが重なっても後ろが透けて見えるように
-                color=colors[c], # このクラスに対応する色
-                label=class_names[c],  # ax.legend()で凡例に表示される名前
-                density=True)    # 縦軸を確率密度にする（Falseだと頻度になり、クラス間のサンプル数差で高さが比べられなくなる）
+                color=colors[c],
+                label=class_names[c])
 
     ax.set_xlabel('z (raw, no mod)', fontsize=13)
-    ax.set_ylabel('Density', fontsize=13)
+    ax.set_ylabel('Relative Frequency', fontsize=13)
     # タイトルにκの値も埋め込む（:.3f で小数3桁）
     ax.set_title(f'Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
     # 各クラスの色とlabelで指定した名前の対応表（凡例）を描画する
@@ -154,15 +157,17 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
     z_wrapped = z_values % (2 * np.pi)
 
     # 全クラス共通の bin 境界を [0, 2π] で事前に計算
-    bin_edges = np.linspace(0, 2 * np.pi, 21)  # 20本の棒 → 境界点は21個
+    bin_edges = np.linspace(0, 2 * np.pi, 31)  # 30本の棒 → 境界点は31個
 
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_wrapped[mask], bins=bin_edges,
+        z_c = z_wrapped[mask]
+        weights = np.ones(len(z_c)) / len(z_c)
+        ax.hist(z_c, bins=bin_edges,
+                weights=weights,
                 alpha=0.5,       # 半透明にしてクラス間の重なりを見えるように
                 color=colors[c],
-                label=class_names[c],
-                density=True)    # 縦軸を確率密度に正規化（クラス間のサンプル数差を吸収）
+                label=class_names[c])
 
     # μ_cの理想位置を縦破線で表示
     for c in range(num_classes):
