@@ -112,9 +112,12 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
     # 描画領域を作る。fig はウィンドウ全体、ax はその中のグラフ本体
     fig, ax = plt.subplots(figsize=(10, 5))
 
+    # 全クラス共通の bin 境界を事前に計算（これで棒の幅が統一される）
+    bin_edges = np.linspace(z_values.min(), z_values.max(), 61)  # 60本の棒 → 境界点は61個
+
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_values[mask], bins=60,  # bins=60 は棒の本数（細かさ）
+        ax.hist(z_values[mask], bins=bin_edges,  # 共通の境界を渡すことで全クラスの棒幅を統一
                 alpha=0.5,        # 透明度50%：複数クラスが重なっても後ろが透けて見えるように
                 color=colors[c], # このクラスに対応する色
                 label=class_names[c],  # ax.legend()で凡例に表示される名前
@@ -152,7 +155,7 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
 
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_wrapped[mask], bins=60,
+        ax.hist(z_wrapped[mask], bins=20,
                 alpha=0.5,       # 半透明にしてクラス間の重なりを見えるように
                 color=colors[c],
                 label=class_names[c],
