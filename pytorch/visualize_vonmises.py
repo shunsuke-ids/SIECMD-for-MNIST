@@ -126,7 +126,7 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
                 color=colors[c],
                 label=class_names[c])
 
-    ax.set_xlabel('z (raw, no mod)', fontsize=13)
+    ax.set_xlabel('z (raw)', fontsize=13)
     ax.set_ylabel('Relative Frequency', fontsize=13)
     # タイトルにκの値も埋め込む（:.3f で小数3桁）
     ax.set_title(f'[{dataset_name}] Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
