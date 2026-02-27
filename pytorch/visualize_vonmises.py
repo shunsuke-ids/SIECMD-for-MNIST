@@ -102,7 +102,7 @@ def print_statistics(z_values, labels, num_classes, class_names, mu_c, kappa):
         print(f"{class_names[c]:>10} | {mu_c[c]:>8.3f} | {z_mean:>8.3f} | {z_median:>10.3f} | {diff:>10.3f}")
 
 
-def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem):
+def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem, dataset_name=''):
     """生のz値（mod 2π なし）のヒストグラム"""
     # HSVカラーマップを取得（色相環を一周する配色で、円環上に並ぶクラスの色分けに適している）
     cmap = plt.cm.hsv
@@ -129,7 +129,7 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
     ax.set_xlabel('z (raw, no mod)', fontsize=13)
     ax.set_ylabel('Relative Frequency', fontsize=13)
     # タイトルにκの値も埋め込む（:.3f で小数3桁）
-    ax.set_title(f'Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
+    ax.set_title(f'[{dataset_name}] Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
     # 各クラスの色とlabelで指定した名前の対応表（凡例）を描画する
     ax.legend(fontsize=11)
 
@@ -145,7 +145,7 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
     print(f"Saved: {path}")
 
 
-def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem):
+def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, dataset_name=''):
     """クラスごとのz分布ヒストグラム（μ_cを縦線で表示）"""
     cmap = plt.cm.hsv
     colors = [cmap(i / num_classes) for i in range(num_classes)]
@@ -175,7 +175,7 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
 
     ax.set_xlabel('z (mod 2π)', fontsize=13)
     ax.set_ylabel('Relative Frequency', fontsize=13)
-    ax.set_title(f'z distribution per class  (κ={kappa:.3f})', fontsize=14)
+    ax.set_title(f'[{dataset_name}] z distribution per class  (κ={kappa:.3f})', fontsize=14)
     ax.set_xlim(0, 2 * np.pi)
     ax.set_xticks([0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
     ax.set_xticklabels(['0', 'π/2', 'π', '3π/2', '2π'])
@@ -188,7 +188,7 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
     print(f"Saved: {path}")
 
 
-def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, max_samples=300):
+def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, dataset_name='', max_samples=300):
     """zを単位円上の点として可視化（μ_cを星マークで表示）"""
     cmap = plt.cm.hsv
     colors = [cmap(i / num_classes) for i in range(num_classes)]
@@ -223,7 +223,7 @@ def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, 
     ax.set_aspect('equal')
     ax.axhline(0, color='lightgray', linewidth=0.5)
     ax.axvline(0, color='lightgray', linewidth=0.5)
-    ax.set_title(f'z on unit circle  (κ={kappa:.3f})', fontsize=14)
+    ax.set_title(f'[{dataset_name}] z on unit circle  (κ={kappa:.3f})', fontsize=14)
     ax.legend(fontsize=11, loc='upper right')
 
     plt.tight_layout()
@@ -275,9 +275,9 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem)
-    plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
-    plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem)
+    plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem, dataset_name=args.dataset)
+    plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, dataset_name=args.dataset)
+    plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, output_dir, model_stem, dataset_name=args.dataset)
 
     print("\nDone!")
 
