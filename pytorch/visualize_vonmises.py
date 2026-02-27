@@ -174,7 +174,7 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
         ax.axvline(mu_c[c], color=colors[c], linestyle='--', linewidth=1.5)
 
     ax.set_xlabel('z (mod 2π)', fontsize=13)
-    ax.set_ylabel('Density', fontsize=13)
+    ax.set_ylabel('Relative Frequency', fontsize=13)
     ax.set_title(f'z distribution per class  (κ={kappa:.3f})', fontsize=14)
     ax.set_xlim(0, 2 * np.pi)
     ax.set_xticks([0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
