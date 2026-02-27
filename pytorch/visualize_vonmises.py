@@ -104,27 +104,37 @@ def print_statistics(z_values, labels, num_classes, class_names, mu_c, kappa):
 
 def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, output_dir, model_stem):
     """生のz値（mod 2π なし）のヒストグラム"""
+    # HSVカラーマップを取得（色相環を一周する配色で、円環上に並ぶクラスの色分けに適している）
     cmap = plt.cm.hsv
+    # cmap(0.0)〜cmap(1.0)の範囲でクラス数に合わせて均等に色を取り出す
     colors = [cmap(i / num_classes) for i in range(num_classes)]
 
+    # 描画領域を作る。fig はウィンドウ全体、ax はその中のグラフ本体
     fig, ax = plt.subplots(figsize=(10, 5))
 
     for c in range(num_classes):
         mask = labels == c
-        ax.hist(z_values[mask], bins=60,
-                alpha=0.5,
-                color=colors[c],
-                label=class_names[c],
-                density=True)
+        ax.hist(z_values[mask], bins=60,  # bins=60 は棒の本数（細かさ）
+                alpha=0.5,        # 透明度50%：複数クラスが重なっても後ろが透けて見えるように
+                color=colors[c], # このクラスに対応する色
+                label=class_names[c],  # ax.legend()で凡例に表示される名前
+                density=True)    # 縦軸を確率密度にする（Falseだと頻度になり、クラス間のサンプル数差で高さが比べられなくなる）
 
     ax.set_xlabel('z (raw, no mod)', fontsize=13)
     ax.set_ylabel('Density', fontsize=13)
+    # タイトルにκの値も埋め込む（:.3f で小数3桁）
     ax.set_title(f'Raw z distribution per class  (κ={kappa:.3f})', fontsize=14)
+    # 各クラスの色とlabelで指定した名前の対応表（凡例）を描画する
     ax.legend(fontsize=11)
 
+    # タイトルや軸ラベルが図の端で切れないように余白を自動調整する
     plt.tight_layout()
+    # / 演算子は pathlib.Path の機能でパス結合になる
+    # model_stem はモデルファイル名から拡張子を除いた部分（例：jurkat_vmce_100ep_best）
     path = output_dir / f'z_raw_histogram_{model_stem}.pdf'
+    # bbox_inches='tight'：凡例や軸ラベルが切れないように図全体をぴったり囲むサイズで保存
     plt.savefig(path, bbox_inches='tight')
+    # 図をメモリから解放する（しないと複数の図を連続描画したときメモリリークする）
     plt.close()
     print(f"Saved: {path}")
 
