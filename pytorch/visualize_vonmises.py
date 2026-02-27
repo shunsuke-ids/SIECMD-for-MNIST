@@ -5,8 +5,8 @@ VonMisesModelの潜在変数z分布の可視化スクリプト
 各クラスのμ_c = 2π * c / C に対応した値に集まっているかを可視化する。
 
 出力:
-  - z_histogram.pdf   : クラスごとのz分布ヒストグラム（μ_c位置を縦線で表示）
-  - z_unit_circle.pdf : zを単位円上の点として可視化（μ_c位置を星マークで表示）
+  - z_histogram.png   : クラスごとのz分布ヒストグラム（μ_c位置を縦線で表示）
+  - z_unit_circle.png : zを単位円上の点として可視化（μ_c位置を星マークで表示）
 """
 
 import torch
@@ -134,7 +134,7 @@ def plot_z_raw_histogram(z_values, labels, num_classes, class_names, kappa, outp
     plt.tight_layout()
     # / 演算子は pathlib.Path の機能でパス結合になる
     # model_stem はモデルファイル名から拡張子を除いた部分（例：jurkat_vmce_100ep_best）
-    path = output_dir / f'z_raw_histogram_{model_stem}.pdf'
+    path = output_dir / f'z_raw_histogram_{model_stem}.png'
     # bbox_inches='tight'：凡例や軸ラベルが切れないように図全体をぴったり囲むサイズで保存
     plt.savefig(path, bbox_inches='tight')
     # 図をメモリから解放する（しないと複数の図を連続描画したときメモリリークする）
@@ -174,7 +174,7 @@ def plot_z_histogram(z_values, labels, num_classes, class_names, mu_c, kappa, ou
     ax.legend(fontsize=11)
 
     plt.tight_layout()
-    path = output_dir / f'z_histogram_{model_stem}.pdf'
+    path = output_dir / f'z_histogram_{model_stem}.png'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {path}")
@@ -219,7 +219,7 @@ def plot_z_unit_circle(z_values, labels, num_classes, class_names, mu_c, kappa, 
     ax.legend(fontsize=11, loc='upper right')
 
     plt.tight_layout()
-    path = output_dir / f'z_unit_circle_{model_stem}.pdf'
+    path = output_dir / f'z_unit_circle_{model_stem}.png'
     plt.savefig(path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {path}")
