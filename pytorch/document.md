@@ -13,7 +13,9 @@ pytorch/
 ├── losses.py                   # 損失関数定義
 ├── datasets.py                 # データセットローダー
 ├── metrics.py                  # 評価指標
+├── evaluate_saved.py           # 保存済みモデルからソフト混同行列を生成
 ├── visualize_unit_circle.py    # 単位円可視化
+├── visualize_vonmises.py       # VonMisesModelのz分布可視化
 └── generate_paper_figures.py   # 論文用図表生成
 ```
 
@@ -74,7 +76,7 @@ main()
 |------|------|
 | `train_epoch()` | 1エポックの学習を実行。損失と精度を返す |
 | `evaluate()` | 検証/テスト評価。ベクトル損失の場合は距離ベース予測を使用 |
-| `evaluate_detailed()` | 詳細評価。混同行列、F1スコア、cMAE等を計算 |
+| `evaluate_detailed()` | 詳細評価。混同行列、ソフト混同行列、F1スコア、cMAE等を計算 |
 | `get_vector_predictions()` | ベクトル損失用の予測関数。argmaxではなく距離最小で予測 |
 
 ### Early Stopping と Best Model 選択
@@ -96,7 +98,7 @@ main()
 
 ### ベクトル予測の仕組み
 
-ベクトル損失（svl, nsvl, msevl, eucvl）使用時:
+ベクトル損失（svl, nsvl, msevl, eucvl, arcvl）使用時:
 
 1. 各クラスを単位円上に等間隔で配置
 2. softmax確率で重み付けした予測ベクトルを計算
@@ -147,6 +149,20 @@ prediction = argmin(distance(pred_vector, class_coords))
 | `num_classes` | 10 | 出力クラス数 |
 | `image_size` | 28 | 入力画像サイズ |
 
+### VonMisesModel
+
+`SimpleCNN`（スカラー出力）と `VonMisesHead` を組み合わせたモデル。`--loss vmce` 指定時に使用。
+
+```
+入力画像
+    │
+    ├── SimpleCNN(num_classes=1)   # スカラー z を出力 (batch, 1)
+    │
+    └── VonMisesHead               # logit_c = κ · cos(z − μ_c) → (batch, num_classes)
+```
+
+κ（集中度パラメータ）は学習可能。出力は通常の CrossEntropyLoss と互換。
+
 ---
 
 ## 3. losses.py - 損失関数
@@ -160,6 +176,8 @@ prediction = argmin(distance(pred_vector, class_coords))
 | `nsvl` | `NormalizedSoftmaxVectorLoss` | 正規化版SVL |
 | `msevl` | `MSEVectorLoss` | MSEベースのベクトル損失 |
 | `eucvl` | `EuclideanVectorLoss` | ユークリッド距離ベースのベクトル損失 |
+| `arcvl` | `ArcDistanceVectorLoss` | 円弧距離（ラジアン）ベースのベクトル損失 |
+| `vmce` | `VonMisesHead` + CE | Von Mises分布ロジット + CrossEntropyLoss（VonMisesModel使用） |
 
 ### ベクトル損失の共通構造
 
@@ -186,7 +204,8 @@ true_vector = true_onehot @ class_coords  # 真のクラス座標
 | SVL | `loss = 1 - dot(pred_vector, true_vector)` |
 | NSVL | `loss = 1 - dot(normalize(pred_vector), true_vector)` |
 | MSEVL | `loss = mean(sum((pred_vector - true_vector)²))` |
-| EucVL | `loss = mean(sqrt(sum((pred_vector - true_vector)²)))` |
+| EucVL | `loss = mean(sqrt(sum((pred_vector - true_vector)²) + ε))` |
+| ArcVL | `loss = mean(acos(clamp(dot(normalize(pred_vector), true_vector))))` |
 
 ---
 
@@ -275,6 +294,16 @@ G1 → G1, S → S, G2/Pro/Meta/Ana/Telo → G2/M
 
 ## 5. metrics.py - 評価指標
 
+### soft_confusion_matrix
+
+クラスごとの平均Softmax分布（ソフト混同行列）を計算する。
+
+```
+soft_cm[i, j] = 真値クラスiのサンプルに対するクラスjへの平均Softmax確率
+```
+
+通常の混同行列（argmax予測）とは異なり、モデルが「どこに確率質量を置いているか」を示す。
+
 ### circular_mae
 
 周期性を考慮したMAE（Mean Absolute Error）。
@@ -329,11 +358,19 @@ python pytorch/train.py --dataset sysmex7 --loss ce --epochs 200 --patience 15
 
 ### wandb ログ
 
-- `train_loss`, `train_acc`: 学習損失・精度（毎エポック）
-- `val_loss`, `val_acc`: 検証損失・精度（毎エポック）
+**毎エポック**
+- `train_loss`, `train_acc`: 学習損失・精度
+- `val_loss`, `val_acc`: 検証損失・精度
+- `kappa`: Von Misesモデル使用時のみ
+
+**学習終了時（summary）**
 - `best_test_acc`, `final_test_acc`: テスト精度
-- `best_circular_mae`, `final_circular_mae`: テストcMAE
+- `best_f1_macro`, `final_f1_macro`: マクロ平均F1
+- `best_f1_weighted`, `final_f1_weighted`: 加重平均F1
+- `best_circular_mae`, `final_circular_mae`: テストcMAE（サンプル平均）
+- `best_circular_mae_macro`, `final_circular_mae_macro`: テストcMAE（マクロ平均）
 - `confusion_matrix_best`, `confusion_matrix_final`: 混同行列画像
+- `soft_confusion_matrix_best`, `soft_confusion_matrix_final`: ソフト混同行列画像
 
 ### 保存ファイル
 
