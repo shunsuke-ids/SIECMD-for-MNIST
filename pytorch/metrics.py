@@ -1,5 +1,27 @@
 import numpy as np
 
+def soft_confusion_matrix(softmax_probs, y_true, num_classes):
+    """
+    クラスごとの平均Softmax分布（ソフト混同行列）
+
+    soft_cm[i, j] = 真値クラスiのサンプルに対するクラスjへの平均Softmax確率
+    通常の混同行列と異なり、モデルが「どこに確率質量を置いているか」を示す。
+
+    Args:
+        softmax_probs: Softmax確率 (N, num_classes)
+        y_true: 正解ラベル (N,)
+        num_classes: クラス数
+    Returns:
+        ndarray: (num_classes, num_classes)
+    """
+    soft_cm = np.zeros((num_classes, num_classes))
+    for i in range(num_classes):
+        mask = y_true == i # 真値クラスiのサンプルを選択
+        if mask.sum() > 0:
+            soft_cm[i] = softmax_probs[mask].mean(axis=0)
+    return soft_cm
+
+
 def circular_mae(y_pred, y_true, num_classes):
     """
     周期性を考慮したMAE（Mean Absolute Error）
