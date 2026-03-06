@@ -361,7 +361,6 @@ python pytorch/train.py --dataset sysmex7 --loss ce --epochs 200 --patience 15
 **毎エポック**
 - `train_loss`, `train_acc`: 学習損失・精度
 - `val_loss`, `val_acc`: 検証損失・精度
-- `kappa`: Von Misesモデル使用時のみ
 
 **学習終了時（summary）**
 - `best_test_acc`, `final_test_acc`: テスト精度

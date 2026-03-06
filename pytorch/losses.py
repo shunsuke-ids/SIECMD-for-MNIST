@@ -151,24 +151,17 @@ class VonMisesHead(nn.Module):
     クラスを単位円上に等間隔で固定配置し（μ_c = 2π * c / C）、
     CNNが出力した1次元スカラーzとの角度距離からクラスロジットを計算する。
 
-    ロジット = κ · cos(z - μ_c)
-    これはVon Mises分布の尤度 p(x|c) ∝ exp(κ · cos(z - μ_c)) の指数部に対応し、
+    ロジット = cos(z - μ_c)
+    これはVon Mises分布の尤度 p(x|c) ∝ exp(cos(z - μ_c)) の指数部に対応し、
     CrossEntropyLossに直接渡すことができる。
+    κは全クラス共通のスカラーであり勾配スケールにしかならないため κ=1 に固定する。
     """
     def __init__(self, num_classes=10):
         super().__init__()
 
         # μ_c: クラスを単位円上に等間隔配置（学習対象外）
         mu = torch.arange(num_classes, dtype=torch.float32) * (2.0 * np.pi / num_classes)
-        self.register_buffer('mu', mu) #学習はしないがモデルの一部として保存するテンソル
-
-        # κ: 集中度パラメータ（学習可能）
-        # 正を保証するためlog_kappaで管理し、κ = exp(log_kappa) で変換
-        self.log_kappa = nn.Parameter(torch.zeros(1)) # 初期値は κ=1 (log_kappa=0)
-
-    @property # kappaをプロパティとして定義し、アクセス時にexp変換を行う
-    def kappa(self):
-        return torch.exp(self.log_kappa)
+        self.register_buffer('mu', mu)
 
     def forward(self, z):
         """
@@ -177,10 +170,7 @@ class VonMisesHead(nn.Module):
         Returns:
             logits: クラスロジット (batch, num_classes)
         """
-        kappa = torch.exp(self.log_kappa)
-
         # z: (batch, 1), self.mu: (num_classes,) → broadcasting で (batch, num_classes)
-        cos_dist = torch.cos(z - self.mu.unsqueeze(0)) # ブロードキャストのために、unsqueezeでself.muを(num_classes,)から(1, num_classes)に変形
-        logits = kappa * cos_dist  # (batch, num_classes)
+        logits = torch.cos(z - self.mu.unsqueeze(0))
 
         return logits
