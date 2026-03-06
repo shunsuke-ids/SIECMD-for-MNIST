@@ -174,3 +174,39 @@ class VonMisesHead(nn.Module):
         logits = torch.cos(z - self.mu.unsqueeze(0))
 
         return logits
+
+
+class VonMisesLearnedHead(nn.Module):
+    """VonMisesHead のμ学習版
+
+    クラスの角度間隔をsoftplusで正値化した累積和で表現し、
+    周期的な順序構造を保ちながらμを学習する。
+
+    ロジット = cos(z - μ_c)
+    """
+    def __init__(self, num_classes=10):
+        super().__init__()
+
+        # raw_delta: 角度間隔の原パラメータ（学習可能）
+        # softplus(raw_delta) が各クラス間の弧長になる
+        # 初期値 0 → softplus(0) = log(2) ≈ 0.693 で等間隔に近い状態からスタート
+        self.raw_delta = nn.Parameter(torch.zeros(num_classes)) # (num_classes,) 学習対象のパラメータとして登録
+
+    def get_mu(self):
+        delta = F.softplus(self.raw_delta)
+        cumsum = torch.cumsum(delta, dim=0) # cumsum[i] = delta[0] + delta[1] + ... + delta[i]
+        mu = 2.0 * np.pi * cumsum / cumsum[-1]
+        return mu
+
+    def forward(self, z):
+        """
+        Args:
+            z: CNNの出力スカラー (batch, 1)
+        Returns:
+            logits: クラスロジット (batch, num_classes)
+        """
+        mu = self.get_mu()
+        # z: (batch, 1), mu: (num_classes,) → broadcasting で (batch, num_classes)
+        logits = torch.cos(z - mu.unsqueeze(0))
+
+        return logits
