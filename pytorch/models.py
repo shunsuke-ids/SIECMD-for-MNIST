@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from losses import VonMisesHead
+from losses import VonMisesHead, VonMisesLearnedHead
 
 class SimpleCNN(nn.Module):
     def __init__(self, input_channels=1, num_classes=10, image_size=28):
@@ -50,6 +50,22 @@ class VonMisesModel(nn.Module):
         super().__init__()
         self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
         self.von_mises_head = VonMisesHead(num_classes)
+
+    def forward(self, x):
+        z = self.backbone(x)                    # (batch, 1)
+        logits = self.von_mises_head(z)         # (batch, num_classes)
+        return logits
+
+
+class VonMisesLearnedModel(nn.Module):
+    """SimpleCNN（スカラー出力）+ VonMisesLearnedHead の組み合わせモデル
+
+    VonMisesModelと同一だが、μを学習可能なVonMisesLearnedHeadを使用する。
+    """
+    def __init__(self, input_channels=1, num_classes=10, image_size=28):
+        super().__init__()
+        self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        self.von_mises_head = VonMisesLearnedHead(num_classes)
 
     def forward(self, x):
         z = self.backbone(x)                    # (batch, 1)

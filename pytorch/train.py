@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss
-from models import SimpleCNN, VonMisesModel
+from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class, soft_confusion_matrix
 
@@ -36,6 +36,7 @@ LOSS_FUNCTIONS = {
     'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss),
     'arcvl': ('ArcDistanceVectorLoss', ArcDistanceVectorLoss),
     'vmce': ('VonMisesClassifier', nn.CrossEntropyLoss),
+    'vmce_mu': ('VonMisesLearnedClassifier', nn.CrossEntropyLoss),
 }
 
 VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
@@ -470,6 +471,8 @@ def main():
 
     if args.loss == 'vmce':
         model = VonMisesModel(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+    elif args.loss == 'vmce_mu':
+        model = VonMisesLearnedModel(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
     else:
         model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
 
