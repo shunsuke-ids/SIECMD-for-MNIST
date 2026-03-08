@@ -187,15 +187,20 @@ class VonMisesLearnedHead(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
 
-        # raw_delta: 角度間隔の原パラメータ（学習可能）
-        # softplus(raw_delta) が各クラス間の弧長になる
-        # 初期値 0 → softplus(0) = log(2) ≈ 0.693 で等間隔に近い状態からスタート
-        self.raw_delta = nn.Parameter(torch.zeros(num_classes)) # (num_classes,) 学習対象のパラメータとして登録
+        # raw_delta: クラス間角度間隔の原パラメータ（学習可能）
+        # C個のギャップ全てを学習し、mu[0]=0 固定で回転の自由度を除去
+        # 初期値 0 → softplus(0) = log(2) で全ギャップ等値 → 等間隔スタート
+        self.raw_delta = nn.Parameter(torch.zeros(num_classes))
 
     def get_mu(self):
-        delta = F.softplus(self.raw_delta)
-        cumsum = torch.cumsum(delta, dim=0) # cumsum[i] = delta[0] + delta[1] + ... + delta[i]
-        mu = 2.0 * np.pi * cumsum / cumsum[-1]
+        delta = F.softplus(self.raw_delta)              # (C,) 全ギャップ
+        total = delta.sum()
+        cumsum = torch.cumsum(delta, dim=0)             # (C,)
+        # mu[0]=0 固定、mu[c] = cumsum[c-1]/total * 2π
+        mu = torch.cat([
+            torch.zeros(1, device=delta.device),
+            2.0 * np.pi * cumsum[:-1] / total
+        ])
         return mu
 
     def forward(self, z):
