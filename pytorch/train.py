@@ -217,6 +217,12 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
             "val_acc": val_acc
         }
 
+        # vmce_mu の場合は学習済みμをエポックごとにログ（mu[0]=0 固定のため mu[1] 以降のみ）
+        if loss_fn == "vmce_mu":
+            mu_vals = model.von_mises_head.get_mu().detach().cpu().numpy()
+            for i, m in enumerate(mu_vals[1:], start=1):
+                log_dict[f"mu_{i}"] = float(m)
+                
         wandb.log(log_dict)
 
         print(f"Epoch {epoch+1:2d}/{epochs} ({time.time()-start:.1f}s) | "
