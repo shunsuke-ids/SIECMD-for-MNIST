@@ -218,7 +218,7 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
         }
 
         # vmce_mu の場合は学習済みμをエポックごとにログ（mu[0]=0 固定のため mu[1] 以降のみ）
-        if loss_fn == "vmce_mu":
+        if loss_key == "vmce_mu":
             mu_vals = model.von_mises_head.get_mu().detach().cpu().numpy()
             for i, m in enumerate(mu_vals[1:], start=1):
                 log_dict[f"mu_{i}"] = float(m)
