@@ -176,6 +176,43 @@ class VonMisesHead(nn.Module):
         return logits
 
 
+class CircularSoftLabelCrossEntropyLoss(nn.Module):
+    """正解クラス0.8・隣接クラス各0.1のソフトラベルCross Entropy
+
+    クラスが循環的に並ぶ場合に適したソフトラベル。
+    隣接は (c-1) % C と (c+1) % C に割り当てる。
+
+    Parameters:
+        num_classes (int): クラス数
+    """
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.num_classes = num_classes
+
+    def forward(self, logits, y_true):
+        """
+        Args:
+            logits: モデル出力 (batch, num_classes)
+            y_true: sparse正解ラベル (batch,)
+        Returns:
+            スカラー損失
+        """
+        C = self.num_classes
+        batch_size = logits.size(0)
+
+        # ソフトラベルを構築
+        soft_labels = torch.zeros(batch_size, C, device=logits.device)
+        soft_labels.scatter_(1, y_true.long().unsqueeze(1), 0.8)
+        prev_cls = (y_true.long() - 1) % C
+        next_cls = (y_true.long() + 1) % C
+        soft_labels.scatter_add_(1, prev_cls.unsqueeze(1), torch.full((batch_size, 1), 0.1, device=logits.device))
+        soft_labels.scatter_add_(1, next_cls.unsqueeze(1), torch.full((batch_size, 1), 0.1, device=logits.device))
+
+        log_probs = F.log_softmax(logits, dim=1)
+        loss = -(soft_labels * log_probs).sum(dim=1).mean()
+        return loss
+
+
 class VonMisesLearnedHead(nn.Module):
     """VonMisesHead のμ学習版
 
