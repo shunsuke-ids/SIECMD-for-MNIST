@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss
+from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss
 from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class, soft_confusion_matrix
@@ -39,10 +39,11 @@ LOSS_FUNCTIONS = {
     'vmce_mu': ('VonMisesLearnedClassifier', nn.CrossEntropyLoss),
     'slce': ('CircularSoftLabelCE', CircularSoftLabelCrossEntropyLoss),
     'ce_msevl': ('CE+MSEVectorLoss', CombinedCEMSEVectorLoss),
+    'ecdl': ('ExpectedCircularDistanceLoss', ExpectedCircularDistanceLoss),
 }
 
 VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
-NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce', 'ce_msevl']
+NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce', 'ce_msevl', 'ecdl']
 
 def get_vector_predictions(logits, num_classes, device):
     """ベクトルベースの予測（距離計算）"""

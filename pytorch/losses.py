@@ -213,6 +213,47 @@ class CircularSoftLabelCrossEntropyLoss(nn.Module):
         return loss
 
 
+class ExpectedCircularDistanceLoss(nn.Module):
+    """期待循環距離損失
+
+    予測分布の下での期待循環距離を最小化する。
+    評価指標 circular MAE を直接最小化する損失。
+
+    L = Σ_c softmax(logit_c) * d_circ(c, y_true) / (C/2)
+
+    d_circ(c, y) = min(|c - y|, C - |c - y|)  ← [0, C/2] の循環距離
+    正規化して [0, 1] にスケール。
+
+    Parameters:
+        num_classes (int): クラス数
+    """
+    def __init__(self, num_classes):
+        super().__init__()
+        self.num_classes = num_classes
+
+        # 各クラスペア間の循環距離テーブルを事前計算 (C, C)
+        C = num_classes
+        idx = torch.arange(C)
+        # dist_table[i, j] = d_circ(i, j) / (C/2) ∈ [0, 1]
+        diff = (idx.unsqueeze(1) - idx.unsqueeze(0)).abs()  # (C, C)
+        circ_dist = torch.minimum(diff, C - diff).float() / (C / 2)
+        self.register_buffer('dist_table', circ_dist)
+
+    def forward(self, logits, y_true):
+        """
+        Args:
+            logits: モデル出力 (batch, num_classes)
+            y_true: sparse正解ラベル (batch,)
+        Returns:
+            スカラー損失
+        """
+        probs = F.softmax(logits, dim=1)  # (batch, C)
+        # 正解クラスごとの循環距離ベクトルを取得 (batch, C)
+        dists = self.dist_table[y_true.long()]
+        loss = (probs * dists).sum(dim=1).mean()
+        return loss
+
+
 class CombinedCEMSEVectorLoss(nn.Module):
     """CrossEntropyLoss + λ * MSEVectorLoss の線形結合損失
 
