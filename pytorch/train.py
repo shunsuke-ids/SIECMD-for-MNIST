@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss
+from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss
 from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class, soft_confusion_matrix
@@ -38,10 +38,11 @@ LOSS_FUNCTIONS = {
     'vmce': ('VonMisesClassifier', nn.CrossEntropyLoss),
     'vmce_mu': ('VonMisesLearnedClassifier', nn.CrossEntropyLoss),
     'slce': ('CircularSoftLabelCE', CircularSoftLabelCrossEntropyLoss),
+    'ce_msevl': ('CE+MSEVectorLoss', CombinedCEMSEVectorLoss),
 }
 
 VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
-NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce']
+NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce', 'ce_msevl']
 
 def get_vector_predictions(logits, num_classes, device):
     """ベクトルベースの予測（距離計算）"""
@@ -434,6 +435,7 @@ def main():
                         help='Early stopping patience (default: None = no early stopping)')
     parser.add_argument('--limit_per_phase', type=int, default=None)
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--lambda_circ', type=float, default=1.0, help='Weight λ for circular loss in combined losses (ce_msevl)')
 
     args = parser.parse_args()
 
@@ -469,11 +471,14 @@ def main():
     else:
         print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset)} | Test: {len(test_loader.dataset)}")
 
+    run_name = f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
+    if args.loss == 'ce_msevl':
+        run_name = f"{args.loss}_lam{args.lambda_circ}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
     wandb.init(
         project="ce_vs_svl",
         group=args.dataset,
         tags=[args.loss],
-        name=f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}",
+        name=run_name,
         config=vars(args)
     )
 
@@ -485,7 +490,9 @@ def main():
         model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
 
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
-    if args.loss in NUM_CLASSES_LOSSES:
+    if args.loss == 'ce_msevl':
+        loss_fn = loss_fn_class(num_classes=cfg['num_classes'], lambda_circ=args.lambda_circ).to(device)
+    elif args.loss in NUM_CLASSES_LOSSES:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
         loss_fn = loss_fn_class()

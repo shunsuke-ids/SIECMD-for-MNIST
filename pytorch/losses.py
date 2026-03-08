@@ -213,6 +213,27 @@ class CircularSoftLabelCrossEntropyLoss(nn.Module):
         return loss
 
 
+class CombinedCEMSEVectorLoss(nn.Module):
+    """CrossEntropyLoss + λ * MSEVectorLoss の線形結合損失
+
+    L = CE(logits, y) + λ * MSEVectorLoss(logits, y)
+
+    Parameters:
+        num_classes (int): クラス数
+        lambda_circ (float): 円環ロスの重み λ (default: 1.0)
+    """
+    def __init__(self, num_classes, lambda_circ=1.0):
+        super().__init__()
+        self.ce = nn.CrossEntropyLoss()
+        self.msevl = MSEVectorLoss(num_classes)
+        self.lambda_circ = lambda_circ
+
+    def forward(self, logits, y_true):
+        ce_loss = self.ce(logits, y_true)
+        mse_loss = self.msevl(logits, y_true)
+        return ce_loss + self.lambda_circ * mse_loss
+
+
 class VonMisesLearnedHead(nn.Module):
     """VonMisesHead のμ学習版
 
