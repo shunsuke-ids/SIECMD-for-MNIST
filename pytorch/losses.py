@@ -254,6 +254,59 @@ class ExpectedCircularDistanceLoss(nn.Module):
         return loss
 
 
+class VonMisesSoftLabelCELoss(nn.Module):
+    """Von Mises分布によるソフトラベルCross Entropy損失
+
+    クラスを単位円上に等間隔固定配置し、Von Mises分布で
+    正解クラス周辺のソフトラベルを生成してCE損失を計算する。
+
+    target_c = softmax(κ · cos(2π(c − y) / C))
+
+    κ→∞ で通常CE（one-hot）、κ→0 で均一ラベルに近づく。
+
+    Parameters:
+        num_classes (int): クラス数
+        kappa (float): 集中度パラメータ（初期値）
+        learn_kappa (bool): κを学習可能にするか（default: False）
+    """
+    def __init__(self, num_classes, kappa=1.0, learn_kappa=False):
+        super().__init__()
+
+        # cos_diffs[i, j] = cos(2π(i-j)/C) ← Von Misesの指数部
+        C = num_classes
+        angles = torch.arange(C, dtype=torch.float32) * (2.0 * np.pi / C)
+        cos_diffs = torch.cos(angles.unsqueeze(0) - angles.unsqueeze(1))  # (C, C)
+        self.register_buffer('cos_diffs', cos_diffs)
+
+        # κは正値を保証するため log_κ で保持
+        log_kappa = torch.tensor(float(np.log(kappa)))
+        if learn_kappa:
+            self.log_kappa = nn.Parameter(log_kappa)
+        else:
+            self.register_buffer('log_kappa', log_kappa)
+
+    def get_kappa(self):
+        return torch.exp(self.log_kappa)
+
+    def forward(self, logits, y_true):
+        """
+        Args:
+            logits: モデル出力 (batch, num_classes)
+            y_true: sparse正解ラベル (batch,)
+        Returns:
+            スカラー損失
+        """
+        kappa = self.get_kappa()
+        # 正解クラスに対応する cos行を取得 (batch, C)
+        cos_vals = self.cos_diffs[y_true.long()]
+        # Von Misesソフトラベル (batch, C)
+        soft_targets = F.softmax(kappa * cos_vals, dim=1)
+
+        log_probs = F.log_softmax(logits, dim=1)
+        loss = -(soft_targets * log_probs).sum(dim=1).mean()
+        return loss
+
+
 class CombinedCEMSEVectorLoss(nn.Module):
     """CrossEntropyLoss + λ * MSEVectorLoss の線形結合損失
 

@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix, classification_report, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss
+from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss, VonMisesSoftLabelCELoss
 from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 from metrics import circular_mae, circular_mae_per_class, soft_confusion_matrix
@@ -40,10 +40,12 @@ LOSS_FUNCTIONS = {
     'slce': ('CircularSoftLabelCE', CircularSoftLabelCrossEntropyLoss),
     'ce_msevl': ('CE+MSEVectorLoss', CombinedCEMSEVectorLoss),
     'ecdl': ('ExpectedCircularDistanceLoss', ExpectedCircularDistanceLoss),
+    'vmsl': ('VonMisesSoftLabelCE', VonMisesSoftLabelCELoss),
+    'vmsl_k': ('VonMisesSoftLabelCE_LearnedKappa', VonMisesSoftLabelCELoss),
 }
 
 VECTOR_LOSSES = ['svl', 'nsvl', 'msevl', 'eucvl', 'arcvl']
-NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce', 'ce_msevl', 'ecdl']
+NUM_CLASSES_LOSSES = VECTOR_LOSSES + ['slce', 'ce_msevl', 'ecdl', 'vmsl', 'vmsl_k']
 
 def get_vector_predictions(logits, num_classes, device):
     """ベクトルベースの予測（距離計算）"""
@@ -226,6 +228,10 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
             mu_vals = model.von_mises_head.get_mu().detach().cpu().numpy()
             for i, m in enumerate(mu_vals[1:], start=1):
                 log_dict[f"mu_{i}"] = float(m)
+
+        # vmsl_k の場合は学習済みκをエポックごとにログ
+        if loss_key == "vmsl_k":
+            log_dict["kappa"] = float(loss_fn.get_kappa().item())
                 
         wandb.log(log_dict)
 
@@ -437,6 +443,7 @@ def main():
     parser.add_argument('--limit_per_phase', type=int, default=None)
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--lambda_circ', type=float, default=1.0, help='Weight λ for circular loss in combined losses (ce_msevl)')
+    parser.add_argument('--kappa', type=float, default=1.0, help='Von Mises concentration parameter κ (vmsl)')
 
     args = parser.parse_args()
 
@@ -475,6 +482,8 @@ def main():
     run_name = f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
     if args.loss == 'ce_msevl':
         run_name = f"{args.loss}_lam{args.lambda_circ}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
+    elif args.loss == 'vmsl':
+        run_name = f"{args.loss}_kap{args.kappa}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
     wandb.init(
         project="ce_vs_svl",
         group=args.dataset,
@@ -493,6 +502,10 @@ def main():
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
     if args.loss == 'ce_msevl':
         loss_fn = loss_fn_class(num_classes=cfg['num_classes'], lambda_circ=args.lambda_circ).to(device)
+    elif args.loss == 'vmsl':
+        loss_fn = loss_fn_class(num_classes=cfg['num_classes'], kappa=args.kappa, learn_kappa=False).to(device)
+    elif args.loss == 'vmsl_k':
+        loss_fn = loss_fn_class(num_classes=cfg['num_classes'], kappa=args.kappa, learn_kappa=True).to(device)
     elif args.loss in NUM_CLASSES_LOSSES:
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
