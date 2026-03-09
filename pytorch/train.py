@@ -510,7 +510,8 @@ def main():
         loss_fn = loss_fn_class(num_classes=cfg['num_classes']).to(device)
     else:
         loss_fn = loss_fn_class()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    params = list(model.parameters()) + list(loss_fn.parameters())
+    optimizer = optim.Adam(params, lr=args.lr)
 
     train_and_evaluate(
         model, train_loader, val_loader, test_loader, loss_fn,
