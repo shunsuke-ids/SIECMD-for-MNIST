@@ -27,7 +27,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 from models import SimpleCNN
-from datasets import get_phenocam_loaders
+from datasets import get_phenocam_loaders, get_jurkat_loaders, get_sysmex_7class_loaders
 from losses import SoftmaxVectorLoss, NormalizedSoftmaxVectorLoss, MSEVectorLoss, EuclideanVectorLoss
 
 LOSS_FUNCTIONS = {
@@ -38,8 +38,27 @@ LOSS_FUNCTIONS = {
     'eucvl': ('EuclideanVectorLoss', EuclideanVectorLoss)
 }
 
-MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+DATASETS = {
+    'phenocam_monthly': {
+        'num_classes': 12,
+        'channels': 3,
+        'size': 224,
+        'class_names': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    },
+    'jurkat4': {
+        'num_classes': 4,
+        'channels': 1,
+        'size': 66,
+        'class_names': ['G1', 'S', 'G2', 'M'],
+    },
+    'sysmex4': {
+        'num_classes': 4,
+        'channels': 3,
+        'size': 64,
+        'class_names': ['G1', 'S', 'G2', 'M'],
+    },
+}
 
 
 def get_class_coords(num_classes):
@@ -71,11 +90,12 @@ def compute_pred_vectors(model, loader, device, num_classes):
 
 
 def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
-                     max_samples=200, loss_name=''):
+                     max_samples=200, loss_name='', class_names=None):
     """単位円上にサンプルをプロット"""
     class_coords = get_class_coords(num_classes).numpy()
+    if class_names is None:
+        class_names = [str(i) for i in range(num_classes)]
 
-    # カラーマップ（12クラス用）
     cmap = plt.cm.hsv
     colors = [cmap(i / num_classes) for i in range(num_classes)]
 
@@ -97,7 +117,7 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
         # ラベルをさらに外側に配置
         label_x = x * 1.36
         label_y = y * 1.36
-        ax.text(label_x, label_y, MONTH_NAMES[i], ha='center', va='center',
+        ax.text(label_x, label_y, class_names[i], ha='center', va='center',
                 fontsize=36, fontweight='bold')
 
     # サンプル数を制限
@@ -200,6 +220,8 @@ def main():
                         help='プロットする最大サンプル数')
     parser.add_argument('--output_dir', type=str, default='./unit_circle_plots',
                         help='出力ディレクトリ')
+    parser.add_argument('--dataset', type=str, choices=DATASETS.keys(),
+                        default='phenocam_monthly', help='データセット')
     parser.add_argument('--limit', type=int, default=None,
                         help='クラスごとのサンプル数制限')
 
@@ -215,17 +237,33 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
-    # データセット読み込み（月ごと12クラス）
-    num_classes = 12
-    train_loader, val_loader, test_loader = get_phenocam_loaders(
-        batch_size=args.batch_size,
-        limit_per_season=args.limit,
-        label_type='month'
-    )
+    # データセット読み込み
+    cfg = DATASETS[args.dataset]
+    num_classes = cfg['num_classes']
+    class_names = cfg['class_names']
+
+    if args.dataset == 'phenocam_monthly':
+        train_loader, val_loader, test_loader = get_phenocam_loaders(
+            batch_size=args.batch_size,
+            limit_per_season=args.limit,
+            label_type='month'
+        )
+    elif args.dataset == 'jurkat4':
+        train_loader, val_loader, test_loader = get_jurkat_loaders(
+            batch_size=args.batch_size,
+            limit_per_phase=args.limit,
+            num_classes=4
+        )
+    elif args.dataset == 'sysmex4':
+        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(
+            batch_size=args.batch_size,
+            num_classes=4
+        )
+
     print(f"Train: {len(train_loader.dataset)}, Val: {len(val_loader.dataset)}, Test: {len(test_loader.dataset)}")
 
     # モデル初期化
-    model = SimpleCNN(input_channels=3, num_classes=num_classes, image_size=224).to(device)
+    model = SimpleCNN(input_channels=cfg['channels'], num_classes=num_classes, image_size=cfg['size']).to(device)
 
     # 損失関数
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
@@ -245,7 +283,7 @@ def main():
     if 0 in args.plot_epochs:
         pred_vectors, labels = compute_pred_vectors(model, val_loader, device, num_classes)
         plot_unit_circle(pred_vectors, labels, num_classes, 0, output_dir,
-                         args.max_samples, loss_name)
+                         args.max_samples, loss_name, class_names)
 
     # 学習ループ
     for epoch in range(1, args.epochs + 1):
@@ -259,7 +297,7 @@ def main():
         if epoch in args.plot_epochs:
             pred_vectors, labels = compute_pred_vectors(model, val_loader, device, num_classes)
             plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
-                             args.max_samples, loss_name)
+                             args.max_samples, loss_name, class_names)
 
     print("\nDone!")
 
