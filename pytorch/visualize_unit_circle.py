@@ -90,7 +90,7 @@ def compute_pred_vectors(model, loader, device, num_classes):
 
 
 def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
-                     max_samples=200, loss_name='', class_names=None):
+                     max_samples=200, loss_name='', class_names=None, dataset_name=''):
     """単位円上にサンプルをプロット"""
     class_coords = get_class_coords(num_classes).numpy()
     if class_names is None:
@@ -163,7 +163,7 @@ def plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
     plt.tight_layout()
 
     # 保存
-    output_path = output_dir / f'unit_circle_{loss_name}_epoch_{epoch:03d}.pdf'
+    output_path = output_dir / f'unit_circle_{dataset_name}_{loss_name}_epoch_{epoch:03d}.pdf'
     plt.savefig(output_path, bbox_inches='tight')
     plt.close()
     print(f"Saved: {output_path}")
@@ -274,7 +274,7 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    print(f"\nTraining with {loss_name} for {args.epochs} epochs")
+    print(f"\nTraining with {loss_name} ({args.loss}) for {args.epochs} epochs")
     print(f"Plot epochs: {args.plot_epochs}")
     print(f"Output directory: {output_dir}")
     print("=" * 60)
@@ -283,7 +283,7 @@ def main():
     if 0 in args.plot_epochs:
         pred_vectors, labels = compute_pred_vectors(model, val_loader, device, num_classes)
         plot_unit_circle(pred_vectors, labels, num_classes, 0, output_dir,
-                         args.max_samples, loss_name, class_names)
+                         args.max_samples, args.loss, class_names, args.dataset)
 
     # 学習ループ
     for epoch in range(1, args.epochs + 1):
@@ -297,7 +297,7 @@ def main():
         if epoch in args.plot_epochs:
             pred_vectors, labels = compute_pred_vectors(model, val_loader, device, num_classes)
             plot_unit_circle(pred_vectors, labels, num_classes, epoch, output_dir,
-                             args.max_samples, loss_name, class_names)
+                             args.max_samples, args.loss, class_names, args.dataset)
 
     print("\nDone!")
 
