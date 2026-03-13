@@ -14,7 +14,7 @@ import seaborn as sns
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss, VonMisesSoftLabelCELoss
 from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
-from metrics import circular_mae, circular_mae_per_class, soft_confusion_matrix
+from metrics import circular_mae, circular_mae_per_class  # , soft_confusion_matrix
 
 DATASETS = {
     'mnist': {'num_classes': 10, 'channels': 1, 'size': 28, 'class_names': [str(i) for i in range(10)]},
@@ -155,13 +155,13 @@ def evaluate_detailed(model, loader, loss_fn, device, num_classes, class_names=N
     circ_mae_per_class = circular_mae_per_class(all_preds, all_labels, num_classes)
 
     # ソフト混同行列
-    soft_cm = soft_confusion_matrix(all_softmax, all_labels, num_classes)
+    # soft_cm = soft_confusion_matrix(all_softmax, all_labels, num_classes)
 
     return {
         'loss': total_loss / total,
         'accuracy': correct / total,
         'confusion_matrix': cm,
-        'soft_confusion_matrix': soft_cm,
+        # 'soft_confusion_matrix': soft_cm,
         'classification_report': report,
         'f1_macro': f1_macro,
         'f1_weighted': f1_weighted,
@@ -305,16 +305,16 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     plt.close(fig_best)
 
     # ソフト混同行列（ベストモデル）
-    fig_soft_best, ax_soft_best = plt.subplots(figsize=(10, 8))
-    sns.heatmap(best_detailed_metrics['soft_confusion_matrix'], annot=True, fmt='.3f', cmap='Blues',
-                xticklabels=class_names if class_names else range(num_classes),
-                yticklabels=class_names if class_names else range(num_classes),
-                ax=ax_soft_best)
-    ax_soft_best.set_xlabel('Predicted (Softmax)')
-    ax_soft_best.set_ylabel('True')
-    ax_soft_best.set_title('Soft Confusion Matrix - Avg Softmax per True Class (Best Model)')
-    wandb.log({"soft_confusion_matrix_best": wandb.Image(fig_soft_best)})
-    plt.close(fig_soft_best)
+    # fig_soft_best, ax_soft_best = plt.subplots(figsize=(10, 8))
+    # sns.heatmap(best_detailed_metrics['soft_confusion_matrix'], annot=True, fmt='.3f', cmap='Blues',
+    #             xticklabels=class_names if class_names else range(num_classes),
+    #             yticklabels=class_names if class_names else range(num_classes),
+    #             ax=ax_soft_best)
+    # ax_soft_best.set_xlabel('Predicted (Softmax)')
+    # ax_soft_best.set_ylabel('True')
+    # ax_soft_best.set_title('Soft Confusion Matrix - Avg Softmax per True Class (Best Model)')
+    # wandb.log({"soft_confusion_matrix_best": wandb.Image(fig_soft_best)})
+    # plt.close(fig_soft_best)
 
     # ===========================================
     # 2. 最終エポックのモデルでTest set評価
@@ -367,16 +367,16 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, loss_fn,
     plt.close(fig_final)
 
     # ソフト混同行列（最終エポックモデル）
-    fig_soft_final, ax_soft_final = plt.subplots(figsize=(10, 8))
-    sns.heatmap(final_detailed_metrics['soft_confusion_matrix'], annot=True, fmt='.3f', cmap='Blues',
-                xticklabels=class_names if class_names else range(num_classes),
-                yticklabels=class_names if class_names else range(num_classes),
-                ax=ax_soft_final)
-    ax_soft_final.set_xlabel('Predicted (Softmax)')
-    ax_soft_final.set_ylabel('True')
-    ax_soft_final.set_title('Soft Confusion Matrix - Avg Softmax per True Class (Final Model)')
-    wandb.log({"soft_confusion_matrix_final": wandb.Image(fig_soft_final)})
-    plt.close(fig_soft_final)
+    # fig_soft_final, ax_soft_final = plt.subplots(figsize=(10, 8))
+    # sns.heatmap(final_detailed_metrics['soft_confusion_matrix'], annot=True, fmt='.3f', cmap='Blues',
+    #             xticklabels=class_names if class_names else range(num_classes),
+    #             yticklabels=class_names if class_names else range(num_classes),
+    #             ax=ax_soft_final)
+    # ax_soft_final.set_xlabel('Predicted (Softmax)')
+    # ax_soft_final.set_ylabel('True')
+    # ax_soft_final.set_title('Soft Confusion Matrix - Avg Softmax per True Class (Final Model)')
+    # wandb.log({"soft_confusion_matrix_final": wandb.Image(fig_soft_final)})
+    # plt.close(fig_soft_final)
 
     # ===========================================
     # wandbのsummaryに記録
