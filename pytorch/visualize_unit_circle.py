@@ -58,6 +58,18 @@ DATASETS = {
         'size': 64,
         'class_names': ['G1', 'S', 'G2', 'M'],
     },
+    'jurkat7': {
+        'num_classes': 7,
+        'channels': 1,
+        'size': 66,
+        'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo'],
+    },
+    'sysmex7': {
+        'num_classes': 7,
+        'channels': 3,
+        'size': 64,
+        'class_names': ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo'],
+    },
 }
 
 
@@ -258,6 +270,17 @@ def main():
         train_loader, val_loader, test_loader = get_sysmex_7class_loaders(
             batch_size=args.batch_size,
             num_classes=4
+        )
+    elif args.dataset == 'jurkat7':
+        train_loader, val_loader, test_loader = get_jurkat_loaders(
+            batch_size=args.batch_size,
+            limit_per_phase=args.limit,
+            num_classes=7
+        )
+    elif args.dataset == 'sysmex7':
+        train_loader, val_loader, test_loader = get_sysmex_7class_loaders(
+            batch_size=args.batch_size,
+            num_classes=7
         )
 
     print(f"Train: {len(train_loader.dataset)}, Val: {len(val_loader.dataset)}, Test: {len(test_loader.dataset)}")
