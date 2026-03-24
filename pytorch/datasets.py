@@ -69,6 +69,44 @@ class ImageDataset(Dataset):
 
         return image, label
 
+def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
+    from datasets import load_dataset
+    from sklearn.model_selection import train_test_split
+    ds = load_dataset("fort-cyber/CFV-Dataset")
+
+    def load_split(split):
+        X, y = [], []
+        for sample in ds[split]:
+            img = sample['image']
+            angle = sample['angle']
+
+            offset = 360 / (2 * num_classes)
+            label = int((angle % 360 + offset) // (360 / num_classes)) % num_classes
+
+            img = img.resize((image_size, image_size))
+            img_array = np.array(img)
+
+            X.append(img_array)
+            y.append(label)
+        return np.array(X), np.array(y)
+    
+    X_train, y_train = load_split('train')
+    X_test, y_test = load_split('test')
+
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+    )
+
+    train_dataset = ImageDataset(X_train, y_train)
+    val_dataset = ImageDataset(X_val, y_val)
+    test_dataset = ImageDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
+
 def merge_jurkat_3class(labels):
     label_mapping = {
         0:0,
