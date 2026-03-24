@@ -18,7 +18,7 @@ from pathlib import Path
 
 from train import DATASETS, LOSS_FUNCTIONS, VECTOR_LOSSES, evaluate_detailed, set_seed
 from models import SimpleCNN, VonMisesModel
-from datasets import (get_mnist_loaders, get_jurkat_loaders,
+from data_loaders import (get_mnist_loaders, get_jurkat_loaders,
                       get_sysmex_loaders, get_sysmex_7class_loaders,
                       get_phenocam_loaders)
 from losses import (SoftmaxVectorLoss, NormalizedSoftmaxVectorLoss,

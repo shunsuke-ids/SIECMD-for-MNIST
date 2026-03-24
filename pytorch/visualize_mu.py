@@ -19,7 +19,7 @@ import argparse
 from pathlib import Path
 
 from models import VonMisesLearnedModel
-from datasets import get_jurkat_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
+from data_loaders import get_jurkat_loaders, get_sysmex_7class_loaders, get_phenocam_loaders
 
 DATASETS = {
     'jurkat4':          {'num_classes': 4,  'channels': 1, 'size': 66,  'class_names': ['G1', 'S', 'G2', 'M']},

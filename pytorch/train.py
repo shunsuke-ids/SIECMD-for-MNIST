@@ -13,7 +13,7 @@ import seaborn as sns
 
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss, VonMisesSoftLabelCELoss
 from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
-from datasets import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders, get_cfv_loader
+from data_loaders import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders, get_cfv_loader
 from metrics import circular_mae, circular_mae_per_class  # , soft_confusion_matrix
 
 DATASETS = {

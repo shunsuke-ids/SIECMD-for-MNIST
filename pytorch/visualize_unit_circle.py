@@ -27,7 +27,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 from models import SimpleCNN
-from datasets import get_phenocam_loaders, get_jurkat_loaders, get_sysmex_7class_loaders
+from data_loaders import get_phenocam_loaders, get_jurkat_loaders, get_sysmex_7class_loaders
 from losses import SoftmaxVectorLoss, NormalizedSoftmaxVectorLoss, MSEVectorLoss, EuclideanVectorLoss
 
 LOSS_FUNCTIONS = {
