@@ -101,5 +101,6 @@ tmp/
 *.csv
 
 saved_models/
+.claude/CLAUDE.md
 # If you later want to version one specific weight file, remove 'weights/' above
 # and add a more specific pattern instead.
