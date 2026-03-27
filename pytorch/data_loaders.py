@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
+from pathlib import Path
 import numpy as np
 import os
 import sys
@@ -72,7 +73,6 @@ class ImageDataset(Dataset):
 def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
     from datasets import load_dataset
     from sklearn.model_selection import train_test_split
-    ds = load_dataset("fort-cyber/CFV-Dataset")
 
     def load_split(split):
         X, y = [], []
@@ -88,10 +88,19 @@ def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
 
             X.append(img_array)
             y.append(label)
+
         return np.array(X), np.array(y)
-    
-    X_train, y_train = load_split('train')
-    X_test, y_test = load_split('test')
+
+    cache_path = Path(__file__).parent.parent / 'data' / 'cfv_cache.npz'
+    if cache_path.exists():
+        data = np.load(cache_path)
+        X_train, y_train = data['X_train'], data['y_train']
+        X_test, y_test = data['X_test'], data['y_test']
+    else:
+        ds = load_dataset("fort-cyber/CFV-Dataset")
+        X_train, y_train = load_split('train')
+        X_test, y_test = load_split('test')
+        np.savez(cache_path, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
 
     X_train, X_val, y_train, y_val = train_test_split(
         X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
