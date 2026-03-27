@@ -526,6 +526,8 @@ def main():
     print(f"RESULT_BEST: acc={wandb.summary['best_test_acc']:.6f} cmae={wandb.summary['best_circular_mae']:.6f}")
     print(f"RESULT_FINAL: acc={wandb.summary['final_test_acc']:.6f} cmae={wandb.summary['final_circular_mae']:.6f}")
 
+    wandb.finish()
+
 if __name__ == '__main__':
     main()
 
