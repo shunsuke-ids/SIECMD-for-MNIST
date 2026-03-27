@@ -16,6 +16,7 @@ pytorch/
 ├── evaluate_saved.py           # 保存済みモデルからソフト混同行列を生成
 ├── visualize_unit_circle.py    # 単位円可視化
 ├── visualize_vonmises.py       # VonMisesModelのz分布可視化
+├── visualize_mu.py             # VonMisesLearnedModelの学習済みμ配置の可視化
 └── generate_paper_figures.py   # 論文用図表生成
 ```
 
@@ -41,6 +42,8 @@ python pytorch/train.py --dataset <dataset> --loss <loss> [options]
 | `--patience` | int | - | 8 | Early Stopping patience |
 | `--limit_per_phase` | int | - | None | クラスあたりのサンプル数上限 |
 | `--seed` | int | - | 42 | 乱数シード |
+| `--lambda_circ` | float | - | 1.0 | `ce_msevl` の円形損失重み λ |
+| `--kappa` | float | - | 1.0 | `vmsl` / `vmsl_k` の Von Mises 集中度パラメータ κ |
 
 ### 処理フロー
 
@@ -163,6 +166,21 @@ prediction = argmin(distance(pred_vector, class_coords))
 
 κ（集中度パラメータ）は学習可能。出力は通常の CrossEntropyLoss と互換。
 
+### VonMisesLearnedModel
+
+`SimpleCNN`（スカラー出力）と `VonMisesLearnedHead` を組み合わせたモデル。`--loss vmce_mu` 指定時に使用。
+
+```
+入力画像
+    │
+    ├── SimpleCNN(num_classes=1)       # スカラー z を出力 (batch, 1)
+    │
+    └── VonMisesLearnedHead            # logit_c = cos(z − μ_c) → (batch, num_classes)
+                                        # μ_c は学習可能（周期的順序を保持）
+```
+
+`VonMisesModel` との違い: κを固定（1.0）し、代わりにクラス配置角度μを学習可能パラメータにする。
+
 ---
 
 ## 3. losses.py - 損失関数
@@ -178,6 +196,56 @@ prediction = argmin(distance(pred_vector, class_coords))
 | `eucvl` | `EuclideanVectorLoss` | ユークリッド距離ベースのベクトル損失 |
 | `arcvl` | `ArcDistanceVectorLoss` | 円弧距離（ラジアン）ベースのベクトル損失 |
 | `vmce` | `VonMisesHead` + CE | Von Mises分布ロジット + CrossEntropyLoss（VonMisesModel使用） |
+| `vmce_mu` | `VonMisesLearnedHead` + CE | μ学習可能版（VonMisesLearnedModel使用） |
+| `slce` | `CircularSoftLabelCrossEntropyLoss` | 固定ソフトラベル（正解0.8・隣接各0.1）CE |
+| `ce_msevl` | `CombinedCEMSEVectorLoss` | CE + λ×MSEVectorLoss の線形結合（`--lambda_circ` で λ 指定） |
+| `ecdl` | `ExpectedCircularDistanceLoss` | Softmax確率で重み付けした期待循環距離を最小化 |
+| `vmsl` | `VonMisesSoftLabelCELoss` | Von Mises分布ソフトラベル CE（κ固定、`--kappa` で指定、デフォルト1.0） |
+| `vmsl_k` | `VonMisesSoftLabelCELoss` | Von Mises分布ソフトラベル CE（κを初期値から学習） |
+
+### VonMisesSoftLabelCELoss の詳細
+
+正解クラスを中心とした Von Mises 分布でソフトラベルを生成し、CE 損失を計算する。
+
+```python
+target_c = softmax(κ · cos(2π(c − y) / C))
+```
+
+κ が大きいほど one-hot に近づき、κ→0 で均一ラベルになる。
+
+**8クラス時の確率分布（参考）**
+
+| クラス距離 | κ=1 | κ=3 | κ=5 |
+|-----------|-----|-----|-----|
+| 0（正解） | 26.8% | 51.4% | 67.8% |
+| ±1 | 20.0% | 21.4% | 15.7% |
+| ±2 | 9.9% | 2.6% | 0.5% |
+| ±3 | 4.9% | 0.3% | ~0% |
+| 4（対角） | 3.6% | 0.1% | ~0% |
+
+`vmsl_k` では κ を `log_κ` として保持し、学習中に更新する（正値保証）。wandb に毎エポック `kappa` としてログされる。
+
+### VonMisesLearnedHead の詳細
+
+μをパラメータとして学習する Von Mises ヘッド。周期的なクラス順序を破壊しないために、クラス間角度ギャップを softplus で正値化した累積和で表現する。
+
+```python
+# 学習パラメータ: raw_delta (C,)  初期値 0
+delta = softplus(raw_delta)          # 正値化（全ギャップ等値スタート）
+total = sum(delta)
+mu[0] = 0                            # 回転の自由度を除去
+mu[c] = cumsum(delta)[c-1] / total * 2π   # 累積比率で等分割
+
+# ロジット計算（κ固定=1）
+logits_c = cos(z - mu_c)
+```
+
+| 項目 | 内容 |
+|------|------|
+| 学習パラメータ | `raw_delta` (C 個のギャップ) |
+| κ | 固定 1.0（`VonMisesHead` との違い） |
+| μ[0] | 0 固定（回転の自由度を排除） |
+| 初期配置 | 等間隔（`vmce` と同一スタート） |
 
 ### ベクトル損失の共通構造
 
@@ -224,6 +292,7 @@ true_vector = true_onehot @ class_coords  # 真のクラス座標
 | `sysmex7` | 7 | 3 | 64 | G1, S, G2, Pro, Meta, Ana, Telo | `get_sysmex_7class_loaders(num_classes=7)` |
 | `phenocam` | 4 | 3 | 224 | Spring, Summer, Fall, Winter | `get_phenocam_loaders(label_type='season')` |
 | `phenocam_monthly` | 12 | 3 | 224 | Jan-Dec | `get_phenocam_loaders(label_type='month')` |
+| `cfv8` | 8 | 3 | 224 | Front, FR, Right, BR, Back, BL, Left, FL | `get_cfv_loader(num_classes=8)` |
 
 ### データ分割
 
@@ -234,6 +303,7 @@ true_vector = true_onehot @ class_coords  # 真のクラス座標
 | jurkat, jurkat4, jurkat7 | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
 | sysmex4, sysmex7 | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
 | phenocam, phenocam_monthly | sklearn 2段階分割 | 70% / 15% / 15% | あり | あり |
+| cfv8 | HuggingFace組込み分割 + val分割 | 80% / 20% / test | あり | あり |
 
 > val_loader がないデータセット（mnist, sysmex 3cls）では、`val_loader = test_loader` として代用される（`train.py` L421-424）。
 
@@ -292,7 +362,34 @@ G1 → G1, S → S, G2/Pro/Meta/Ana/Telo → G2/M
 
 ---
 
-## 5. metrics.py - 評価指標
+## 5. visualize_mu.py - μ配置の可視化
+
+`vmce_mu` で学習した `VonMisesLearnedModel` の学習済みμ配置を可視化する。
+
+### 実行方法
+
+```bash
+python pytorch/visualize_mu.py --model_path <path_to_pth> --dataset <dataset>
+```
+
+### コマンドライン引数
+
+| 引数 | 型 | 必須 | デフォルト | 説明 |
+|------|-----|------|-----------|------|
+| `--model_path` | str | ○ | - | `vmce_mu` で学習した `.pth` ファイルパス |
+| `--dataset` | str | ○ | - | データセット名（jurkat4/7, sysmex4/7, phenocam, phenocam_monthly） |
+| `--batch_size` | int | - | 64 | バッチサイズ |
+| `--output_dir` | str | - | `./mu_plots` | 出力先ディレクトリ |
+
+### 出力
+
+| ファイル名 | 内容 |
+|-----------|------|
+| `mu_unit_circle_{model_stem}.png` | 単位円上のμ配置比較（等間隔○ vs 学習済み★、z分布散布図付き） |
+
+---
+
+## 6. metrics.py - 評価指標
 
 ### soft_confusion_matrix
 
@@ -331,7 +428,7 @@ cMAE = mean(circular_diff)
 
 ---
 
-## 6. 実行例
+## 7. 実行例
 
 ### 基本的な実行
 
@@ -344,6 +441,15 @@ python pytorch/train.py --dataset jurkat7 --loss msevl --epochs 100 --lr 0.0005
 
 # sysmex7 を早期終了付きで学習
 python pytorch/train.py --dataset sysmex7 --loss ce --epochs 200 --patience 15
+
+# vmce_mu（μ学習）で jurkat4 を学習
+python pytorch/train.py --dataset jurkat4 --loss vmce_mu --epochs 100
+
+# CFV データセット（8方向分類）を学習
+python pytorch/train.py --dataset cfv8 --loss ce --epochs 50
+
+# vmce_mu 学習済みモデルのμ配置を可視化
+python pytorch/visualize_mu.py --model_path saved_models/jurkat4_vmce_mu_100ep_best.pth --dataset jurkat4
 ```
 
 ### 複数シード実行（スクリプト使用）
@@ -354,7 +460,7 @@ python pytorch/train.py --dataset sysmex7 --loss ce --epochs 200 --patience 15
 
 ---
 
-## 7. 出力
+## 8. 出力
 
 ### wandb ログ
 
