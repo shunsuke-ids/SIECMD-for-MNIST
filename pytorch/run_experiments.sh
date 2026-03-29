@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 実験設定
-DATASETS=("phenocam_monthly")
+DATASETS=("cfv8")
 LOSSES=("ce" "svl" "nsvl" "msevl" "eucvl" "vmce" "vmce_mu" "ce_msevl")
 SEEDS=(0 1 2 3 4)
 KAPPA=(1 2 3 4 5)
