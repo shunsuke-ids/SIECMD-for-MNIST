@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss, VonMisesSoftLabelCELoss
-from models import SimpleCNN, VonMisesModel, VonMisesLearnedModel
+from models import ResNet18, SimpleCNN, VonMisesModel, VonMisesLearnedModel
 from data_loaders import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders, get_cfv_loader
 from metrics import circular_mae, circular_mae_per_class  # , soft_confusion_matrix
 
@@ -445,6 +445,7 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--lambda_circ', type=float, default=1.0, help='Weight λ for circular loss in combined losses (ce_msevl)')
     parser.add_argument('--kappa', type=float, default=1.0, help='Von Mises concentration parameter κ (vmsl)')
+    parser.add_argument('--arch', type=str, choices=['simple_cnn', 'resnet18'], default='simple_cnn', help='Model architecture to use')
 
     args = parser.parse_args()
 
@@ -482,11 +483,11 @@ def main():
     else:
         print(f"Dataset: {args.dataset.upper()} | Train: {len(train_loader.dataset)} | Validation: {len(val_loader.dataset)} | Test: {len(test_loader.dataset)}")
 
-    run_name = f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
+    run_name = f"{args.loss}_{args.lr}lr_{args.epochs}ep_seed{args.seed}_{args.arch}"
     if args.loss == 'ce_msevl':
-        run_name = f"{args.loss}_lam{args.lambda_circ}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
+        run_name = f"{args.loss}_lam{args.lambda_circ}_{args.lr}lr_{args.epochs}ep_seed{args.seed}_{args.arch}"
     elif args.loss == 'vmsl':
-        run_name = f"{args.loss}_kap{args.kappa}_{args.lr}lr_{args.epochs}ep_seed{args.seed}"
+        run_name = f"{args.loss}_kap{args.kappa}_{args.lr}lr_{args.epochs}ep_seed{args.seed}_{args.arch}"
     wandb.init(
         project="ce_vs_svl",
         group=args.dataset,
@@ -496,11 +497,14 @@ def main():
     )
 
     if args.loss == 'vmce':
-        model = VonMisesModel(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+        model = VonMisesModel(cfg['channels'], cfg['num_classes'], cfg['size'], args.arch).to(device)
     elif args.loss == 'vmce_mu':
-        model = VonMisesLearnedModel(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+        model = VonMisesLearnedModel(cfg['channels'], cfg['num_classes'], cfg['size'], args.arch).to(device)
     else:
-        model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+        if args.arch == 'simple_cnn':
+            model = SimpleCNN(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
+        elif args.arch == 'resnet18':
+            model = ResNet18(cfg['channels'], cfg['num_classes'], cfg['size']).to(device)
 
     loss_name, loss_fn_class = LOSS_FUNCTIONS[args.loss]
     if args.loss == 'ce_msevl':

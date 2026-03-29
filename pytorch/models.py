@@ -39,6 +39,16 @@ class SimpleCNN(nn.Module):
         x = self.fc3(x)
 
         return x
+class ResNet18(nn.Module):
+    def __init__(self, input_channels=1, num_classes=10, image_size=224):
+        super().__init__()
+        model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+        model.conv1 = nn.Conv2d(input_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        self.model = model
+
+    def forward(self, x):
+        return self.model(x)
 
 class VonMisesModel(nn.Module):
     """SimpleCNN（スカラー出力）+ VonMisesHead の組み合わせモデル
@@ -46,9 +56,12 @@ class VonMisesModel(nn.Module):
     SimpleCNNをnum_classes=1で使いバックボーンを共有する。
     出力形状は (batch, num_classes) で通常のCrossEntropyLossと互換。
     """
-    def __init__(self, input_channels=1, num_classes=10, image_size=28):
+    def __init__(self, input_channels=1, num_classes=10, image_size=28, arch='simple_cnn'):
         super().__init__()
-        self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        if arch == 'simple_cnn':
+            self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        elif arch == 'resnet18':
+            self.backbone = ResNet18(input_channels, num_classes=1, image_size=image_size)
         self.von_mises_head = VonMisesHead(num_classes)
 
     def forward(self, x):
@@ -62,9 +75,12 @@ class VonMisesLearnedModel(nn.Module):
 
     VonMisesModelと同一だが、μを学習可能なVonMisesLearnedHeadを使用する。
     """
-    def __init__(self, input_channels=1, num_classes=10, image_size=28):
+    def __init__(self, input_channels=1, num_classes=10, image_size=28, arch='simple_cnn'):
         super().__init__()
-        self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        if arch == 'simple_cnn':
+            self.backbone = SimpleCNN(input_channels, num_classes=1, image_size=image_size)
+        elif arch == 'resnet18':
+            self.backbone = ResNet18(input_channels, num_classes=1, image_size=image_size)
         self.von_mises_head = VonMisesLearnedHead(num_classes)
 
     def forward(self, x):
