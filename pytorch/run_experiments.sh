@@ -2,16 +2,18 @@
 
 # 実験設定
 DATASETS=("phenocam_monthly")
-LOSSES=("ce" "msevl")
-SEEDS=(5 6 7 8 9)
+LOSSES=("ce" "svl" "nsvl" "msevl" "eucvl" "vmce" "vmce_mu" "ce_msevl")
+SEEDS=(0 1 2 3 4)
+KAPPA=(1 2 3 4 5)
 EPOCHS=100
+ARCH="resnet18"
 
 # 結果ファイル
-RESULT_FILE="experiment_results.csv"
+RESULT_FILE="resnet18_cfv8_results.csv"
 echo "dataset,loss,seed,best_acc,best_cmae,final_acc,final_cmae" > "$RESULT_FILE"
 
 # 実験数の計算
-TOTAL=$((${#DATASETS[@]} * ${#LOSSES[@]} * ${#SEEDS[@]}))
+TOTAL=$((${#DATASETS[@]} * ${#LOSSES[@]} * ${#SEEDS[@]} + ${#DATASETS[@]} * ${#KAPPA[@]} * ${#SEEDS[@]}))
 COUNT=0
 
 echo "=============================================="
@@ -31,7 +33,8 @@ for dataset in "${DATASETS[@]}"; do
                 --dataset "$dataset" \
                 --loss "$loss" \
                 --epochs "$EPOCHS" \
-                --seed "$seed" 2>&1)
+                --seed "$seed" \
+                --arch "$ARCH" 2>&1)
 
             # エラーチェック
             if [ $? -ne 0 ]; then
@@ -57,6 +60,45 @@ for dataset in "${DATASETS[@]}"; do
     done
 done
 
+for dataset in "${DATASETS[@]}"; do
+    for seed in "${SEEDS[@]}"; do
+        for kappa in "${KAPPA[@]}"; do
+            COUNT=$((COUNT + 1))
+
+            # 実験実行、出力をキャプチャ
+            OUTPUT=$(python pytorch/train.py \
+                --dataset "$dataset" \
+                --loss "vmsl" \
+                --epochs "$EPOCHS" \
+                --seed "$seed" \
+                --arch "$ARCH" \
+                --kappa "$kappa" 2>&1)
+
+            # エラーチェック
+            if [ $? -ne 0 ]; then
+                echo "ERROR: 実験が失敗しました (${dataset}, vmsl_${kappa}, seed=${seed})"
+                echo "$OUTPUT"
+                exit 1
+            fi
+
+            echo "$OUTPUT"
+
+            # 結果をパース
+            BEST_LINE=$(echo "$OUTPUT" | grep "RESULT_BEST:")
+            FINAL_LINE=$(echo "$OUTPUT" | grep "RESULT_FINAL:")
+
+            BEST_ACC=$(echo "$BEST_LINE" | sed 's/.*acc=\([0-9.]*\).*/\1/')
+            BEST_CMAE=$(echo "$BEST_LINE" | sed 's/.*cmae=\([0-9.]*\).*/\1/')
+            FINAL_ACC=$(echo "$FINAL_LINE" | sed 's/.*acc=\([0-9.]*\).*/\1/')
+            FINAL_CMAE=$(echo "$FINAL_LINE" | sed 's/.*cmae=\([0-9.]*\).*/\1/')
+
+            # CSVに追記
+            echo "${dataset},vmsl_${kappa},${seed},${BEST_ACC},${BEST_CMAE},${FINAL_ACC},${FINAL_CMAE}" >> "$RESULT_FILE"
+        done
+    done
+done
+
+
 echo ""
 echo "=============================================="
 echo "全${TOTAL}回の実験が完了しました"
@@ -65,6 +107,7 @@ echo ""
 echo "結果集計 (mean ± std)"
 echo "=============================================="
 
+LOSSES+=("vmsl_1" "vmsl_2" "vmsl_3" "vmsl_4" "vmsl_5")
 # 集計（awkで計算）
 for dataset in "${DATASETS[@]}"; do
     echo ""
