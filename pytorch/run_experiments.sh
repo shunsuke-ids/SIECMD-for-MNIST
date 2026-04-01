@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # 実験設定
-DATASETS=("cfv8")
-LOSSES=("ce" "svl" "nsvl" "msevl" "eucvl" "vmce" "vmce_mu" "ce_msevl")
+DATASETS=("coil8")
+LOSSES=("ce" "msevl")
 SEEDS=(0 1 2 3 4)
 KAPPA=(1 2 3 4 5)
 EPOCHS=100
 ARCH="resnet18"
 
 # 結果ファイル
-RESULT_FILE="resnet18_cfv8_results.csv"
+RESULT_FILE="resnet18_coil8_results.csv"
 echo "dataset,loss,seed,best_acc,best_cmae,final_acc,final_cmae" > "$RESULT_FILE"
 
 # 実験数の計算
