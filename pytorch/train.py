@@ -13,7 +13,7 @@ import seaborn as sns
 
 from losses import EuclideanVectorLoss, NormalizedSoftmaxVectorLoss, SoftmaxVectorLoss, MSEVectorLoss, ArcDistanceVectorLoss, CircularSoftLabelCrossEntropyLoss, CombinedCEMSEVectorLoss, ExpectedCircularDistanceLoss, VonMisesSoftLabelCELoss
 from models import ResNet18, SimpleCNN, VonMisesModel, VonMisesLearnedModel
-from data_loaders import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders, get_cfv_loader
+from data_loaders import get_mnist_loaders, get_jurkat_loaders, get_sysmex_loaders, get_sysmex_7class_loaders, get_phenocam_loaders, get_cfv_loader, get_coil_loader
 from metrics import circular_mae, circular_mae_per_class  # , soft_confusion_matrix
 
 DATASETS = {
@@ -27,6 +27,7 @@ DATASETS = {
     'phenocam': {'num_classes': 4, 'channels': 3, 'size': 224, 'class_names': ['Spring', 'Summer', 'Fall', 'Winter']},
     'phenocam_monthly': {'num_classes': 12, 'channels': 3, 'size': 224, 'class_names': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']},
     'cfv8': {'num_classes': 8, 'channels': 3, 'size': 224, 'class_names': ['Front', 'FR', 'Right', 'BR', 'Back', 'BL', 'Left', 'FL']},
+    'coil8': {'num_classes': 8, 'channels': 3, 'size': 128, 'class_names': ['0-40', '45-85', '90-130', '135-175', '180-220', '225-265', '270-310', '315-355']}
 }
 
 LOSS_FUNCTIONS = {
@@ -475,6 +476,8 @@ def main():
         train_loader, val_loader, test_loader = get_phenocam_loaders(args.batch_size, limit_per_season=args.limit_per_phase, label_type='month')
     elif args.dataset == 'cfv8':
         train_loader, val_loader, test_loader = get_cfv_loader(args.batch_size, num_classes=8)
+    elif args.dataset == 'coil8':
+        train_loader, val_loader, test_loader = get_coil_loader(args.batch_size, num_classes=8)        
 
     # val_loaderがない場合はtest_loaderを使う（mnist, sysmex）
     if val_loader is None:

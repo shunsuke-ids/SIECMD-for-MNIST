@@ -116,6 +116,36 @@ def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
 
     return train_loader, val_loader, test_loader
 
+def get_coil_loader(batch_size=64, num_workers=2, num_classes=8, image_size=128):
+    from pathlib import Path
+    from sklearn.model_selection import train_test_split
+    from PIL import Image
+
+    COIL_DIR = Path(__file__).parent.parent / 'data' / 'coil-100' / 'coil-100'
+    X, y = [], []
+    for img in sorted(COIL_DIR.glob('obj*__*.png')):
+        label = int(img.stem.split('__')[1]) // 45
+        img = Image.open(img).resize((image_size, image_size))
+        img = np.array(img)
+        X.append(img)
+        y.append(label)
+    
+    X = np.array(X)
+    y = np.array(y)
+    
+    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp)
+
+    train_dataset = ImageDataset(X_train, y_train)
+    val_dataset = ImageDataset(X_val, y_val)
+    test_dataset = ImageDataset(X_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)    
+
+    return train_loader, val_loader, test_loader
+
 def merge_jurkat_3class(labels):
     label_mapping = {
         0:0,
