@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 実験設定
-DATASETS=("coil8")
+DATASETS=("jurkat4" "jurakt7" "sysmex4" "sysmex7")
 LOSSES=("ce" "msevl")
 SEEDS=(0 1 2 3 4)
 KAPPA=(1 2 3 4 5)
@@ -61,8 +61,8 @@ for dataset in "${DATASETS[@]}"; do
 done
 
 for dataset in "${DATASETS[@]}"; do
-    for seed in "${SEEDS[@]}"; do
-        for kappa in "${KAPPA[@]}"; do
+    for kappa in "${KAPPA[@]}"; do
+        for seed in "${SEEDS[@]}"; do
             COUNT=$((COUNT + 1))
 
             # 実験実行、出力をキャプチャ
