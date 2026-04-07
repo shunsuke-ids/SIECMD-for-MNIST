@@ -3,11 +3,15 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 from pathlib import Path
 import numpy as np
-import os
-import sys
+import cv2
+from sklearn.model_selection import train_test_split
+from typing import List, Dict
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(project_root)
+PHENOCAM_DIR = Path('/home/shunsuke/data/raw/phenocam/phenocamdata/ashburnham')
+COIL_DIR = Path(__file__).parent.parent / 'data' / 'coil-100' / 'coil-100'
+JURKAT_DIR = Path('/home/shunsuke/data/raw/extracted/jurkat_cell_cycle')
+SYSMEX_DIR = Path(__file__).parent.parent / 'data' / 'sysmex_cell_cycle_3cls'
+SYSMEX_7CLASS_DIR = Path(__file__).parent.parent / 'data' / 'dataset_preprocessed_7classes_mokushi_screening'
 
 def get_mnist_loaders(batch_size=64, data_dir='./data', num_workers=2):
     transform = transforms.Compose([
@@ -46,10 +50,11 @@ def get_mnist_loaders(batch_size=64, data_dir='./data', num_workers=2):
     return train_loader, test_loader
 
 class ImageDataset(Dataset):
-    def __init__(self, images, labels, transform=None):
+    def __init__(self, images, labels, transform=None, normalize=True):
         self.images = images
         self.labels = labels
         self.transform = transform
+        self.normalize = normalize
 
     def __len__(self):
         return len(self.images)
@@ -63,7 +68,8 @@ class ImageDataset(Dataset):
         else:
             image = torch.from_numpy(image).permute(2, 0, 1).float()  # (H, W, C) -> (C, H, W)
 
-        image = image / 255.0  # 0-255の範囲を0-1に正規化
+        if self.normalize:
+            image = image / 255.0  # 0-255の範囲を0-1に正規化
 
         if self.transform:
             image = self.transform(image)
@@ -72,7 +78,6 @@ class ImageDataset(Dataset):
 
 def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
     from datasets import load_dataset
-    from sklearn.model_selection import train_test_split
 
     def load_split(split):
         X, y = [], []
@@ -117,14 +122,10 @@ def get_cfv_loader(batch_size=64, num_workers=2, num_classes=8, image_size=224):
     return train_loader, val_loader, test_loader
 
 def get_coil_loader(batch_size=64, num_workers=2, num_classes=8, image_size=128):
-    from pathlib import Path
-    from sklearn.model_selection import train_test_split
     from PIL import Image
-
-    COIL_DIR = Path(__file__).parent.parent / 'data' / 'coil-100' / 'coil-100'
     X, y = [], []
     for img in sorted(COIL_DIR.glob('obj*__*.png')):
-        label = int(img.stem.split('__')[1]) // 45
+        label = int(img.stem.split('__')[1]) // (360 // num_classes)
         img = Image.open(img).resize((image_size, image_size))
         img = np.array(img)
         X.append(img)
@@ -171,17 +172,49 @@ def merge_4class(labels):
     }
     return np.array([label_mapping[label] for label in labels])
 
-def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_classes=3):
-    from src.regression.utils.data_loaders import load_jurkat_ch3_data
-    from sklearn.model_selection import train_test_split
+def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_classes=3, image_size=66):
 
     PHASES3 = ['G1', 'S', 'G2/M']
     PHASES4 = ['G1', 'S', 'G2', 'M']
+    PHASES7 = ['G1', 'S', 'G2', 'Prophase', 'Metaphase', 'Anaphase', 'Telophase']
 
-    X, labels = load_jurkat_ch3_data(limit_per_phase=limit_per_phase, image_size=66)
 
-    from src.regression.utils.data_loaders import get_label_to_index_mapping, PHASES7
-    label_to_index = get_label_to_index_mapping(PHASES7)
+    X: List[np.ndarray] = []
+    phase_labels: List[str] = []
+    phase_counts: Dict[str, int] = {p: 0 for p in PHASES7}
+
+    # Brightfield Ch3 JPEG files
+    patterns = ['*Ch3*.jpg', '*Ch3*.jpeg']
+
+    for ph in PHASES7:
+        files: List[Path] = []
+        for pat in patterns:
+            files.extend(sorted((JURKAT_DIR / ph).glob(pat)))
+
+        # Deduplicate while preserving order
+        seen = set()
+        uniq_files = []
+        for p in files:
+            if p not in seen:
+                uniq_files.append(p)
+                seen.add(p)
+
+        for p in uniq_files:
+            if limit_per_phase is not None and phase_counts[ph] >= limit_per_phase:
+                break
+            img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
+            if img is None:
+                continue
+            if img.shape[0] != image_size or img.shape[1] != image_size:
+                img = cv2.resize(img, (image_size, image_size), interpolation=cv2.INTER_AREA)
+            X.append(img[..., None])
+            phase_labels.append(ph)
+            phase_counts[ph] += 1
+
+    X = np.stack(X, axis=0)
+    labels = np.array(phase_labels)
+
+    label_to_index = {label: i for i, label in enumerate(PHASES7)}
     y = np.array([label_to_index[label] for label in labels])
 
     if num_classes == 3:
@@ -211,10 +244,7 @@ def get_jurkat_loaders(batch_size=64, limit_per_phase=None, num_workers=2, num_c
     return train_loader, val_loader, test_loader
 
 def get_sysmex_loaders(batch_size=64, num_workers=2):
-    import cv2
-    from pathlib import Path
 
-    SYSMEX_DIR = Path(__file__).parent.parent / 'data' / 'sysmex_cell_cycle_3cls'
     PHASES = ['G1', 'S', 'G2']
 
     def load_split(split):
@@ -246,11 +276,6 @@ def get_sysmex_loaders(batch_size=64, num_workers=2):
 
 def get_sysmex_7class_loaders(batch_size=64, num_workers=0, num_classes=7):
     # 3クラスのデータセットとは異なりtrainとtestに分かれていないため別関数として定義した
-    import cv2
-    from pathlib import Path
-    from sklearn.model_selection import train_test_split
-
-    SYSMEX_7CLASS_DIR = Path(__file__).parent.parent / 'data' / 'dataset_preprocessed_7classes_mokushi_screening'
     PHASES7 = ['G1', 'S', 'G2', 'Pro', 'Meta', 'Ana', 'Telo']
     PHASES4 = ['G1', 'S', 'G2', 'M']
 
@@ -293,40 +318,70 @@ def get_sysmex_7class_loaders(batch_size=64, num_workers=0, num_classes=7):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, val_loader, test_loader
-class NormalizedImageDataset(Dataset):
-    """既に[0,1]に正規化済みの画像用Dataset"""
-    def __init__(self, images, labels, transform=None):
-        self.images = images
-        self.labels = labels
-        self.transform = transform
 
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        image = self.images[idx]
-        label = self.labels[idx]
-
-        if len(image.shape) == 2:  # グレースケール画像の場合
-            image = torch.from_numpy(image).unsqueeze(0).float()
-        else:
-            image = torch.from_numpy(image).permute(2, 0, 1).float()  # (H, W, C) -> (C, H, W)
-
-        # 既に[0,1]に正規化済みなので255で割らない
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
-
+def month_to_season(month: int) -> str:
+    if month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    elif month in [9, 10, 11]:
+        return 'Fall'
+    else:
+        return 'Winter'
+    
 def get_phenocam_loaders(batch_size=64, limit_per_season=None, image_size=224, num_workers=2, label_type='season'):
-    from src.regression.utils.data_loaders import load_phenocam_data, get_label_to_index_mapping, SEASONS, MONTHS
-    from sklearn.model_selection import train_test_split
+    SEASONS = ['Spring', 'Summer', 'Fall', 'Winter']
+    MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    X, labels = load_phenocam_data(label_type=label_type, limit_per_class=limit_per_season, image_size=image_size)
-
+    X: List[np.ndarray] = []
+    labels_list: List[str] = []
+    
     classes = SEASONS if label_type == 'season' else MONTHS
-    label_to_index = get_label_to_index_mapping(classes)
+    class_counts: Dict[str, int] = {c: 0 for c in classes}
+
+    for year_dir in sorted(PHENOCAM_DIR.glob('[0-9]*')):
+        if not year_dir.is_dir():
+            continue
+
+        for month_dir in sorted(year_dir.glob('[0-9]*')):
+            if not month_dir.is_dir():
+                continue
+
+            month = int(month_dir.name)
+            
+            if label_type == 'season':
+                label = month_to_season(month)
+            elif label_type == 'month':
+                # month is 1-12, MONTHS is 0-indexed
+                label = MONTHS[month - 1]
+            else:
+                raise ValueError(f"Unknown label_type: {label_type}")
+
+            if limit_per_season is not None and class_counts[label] >= limit_per_season:
+                continue
+
+            for img_path in sorted(month_dir.glob('*.jpg')):
+                # クラス制限の再チェック（月フォルダ内に複数画像があるため）
+                if limit_per_season is not None and class_counts[label] >= limit_per_season:
+                    break
+
+                img = cv2.imread(str(img_path))
+                if img is None:
+                    continue
+                if img.shape[0] != image_size or img.shape[1] != image_size:
+                    img = cv2.resize(img, (image_size, image_size), interpolation=cv2.INTER_AREA)
+
+                # 学習しやすいように[0, 255]から[0, 1]に正規化
+                img = img.astype(np.float32) / 255.0
+
+                X.append(img)
+                labels_list.append(label)
+                class_counts[label] += 1
+
+    X = np.stack(X, axis=0)
+    labels = np.array(labels_list)
+
+    label_to_index = {label: i for i, label in enumerate(classes)}
     y = np.array([label_to_index[label] for label in labels])
 
     print(f"Loaded {len(X)} images from {len(classes)} {label_type}s")
@@ -344,9 +399,9 @@ def get_phenocam_loaders(batch_size=64, limit_per_season=None, image_size=224, n
         X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
     )
 
-    train_dataset = NormalizedImageDataset(X_train, y_train)
-    val_dataset = NormalizedImageDataset(X_val, y_val)
-    test_dataset = NormalizedImageDataset(X_test, y_test)
+    train_dataset = ImageDataset(X_train, y_train, normalize=False)
+    val_dataset = ImageDataset(X_val, y_val, normalize=False)
+    test_dataset = ImageDataset(X_test, y_test, normalize=False)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
