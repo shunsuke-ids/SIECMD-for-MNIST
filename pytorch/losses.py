@@ -144,38 +144,6 @@ class ArcDistanceVectorLoss(nn.Module):
 
         return loss.mean()
 
-
-class VonMisesHead(nn.Module):
-    """Von Mises分布を用いたクラス分類ヘッド
-
-    クラスを単位円上に等間隔で固定配置し（μ_c = 2π * c / C）、
-    CNNが出力した1次元スカラーzとの角度距離からクラスロジットを計算する。
-
-    ロジット = cos(z - μ_c)
-    これはVon Mises分布の尤度 p(x|c) ∝ exp(cos(z - μ_c)) の指数部に対応し、
-    CrossEntropyLossに直接渡すことができる。
-    κは全クラス共通のスカラーであり勾配スケールにしかならないため κ=1 に固定する。
-    """
-    def __init__(self, num_classes=10):
-        super().__init__()
-
-        # μ_c: クラスを単位円上に等間隔配置（学習対象外）
-        mu = torch.arange(num_classes, dtype=torch.float32) * (2.0 * np.pi / num_classes)
-        self.register_buffer('mu', mu)
-
-    def forward(self, z):
-        """
-        Args:
-            z: CNNの出力スカラー (batch, 1)
-        Returns:
-            logits: クラスロジット (batch, num_classes)
-        """
-        # z: (batch, 1), self.mu: (num_classes,) → broadcasting で (batch, num_classes)
-        logits = torch.cos(z - self.mu.unsqueeze(0))
-
-        return logits
-
-
 class CircularSoftLabelCrossEntropyLoss(nn.Module):
     """正解クラス0.8・隣接クラス各0.1のソフトラベルCross Entropy
 
@@ -326,44 +294,3 @@ class CombinedCEMSEVectorLoss(nn.Module):
         ce_loss = self.ce(logits, y_true)
         mse_loss = self.msevl(logits, y_true)
         return ce_loss + self.lambda_circ * mse_loss
-
-
-class VonMisesLearnedHead(nn.Module):
-    """VonMisesHead のμ学習版
-
-    クラスの角度間隔をsoftplusで正値化した累積和で表現し、
-    周期的な順序構造を保ちながらμを学習する。
-
-    ロジット = cos(z - μ_c)
-    """
-    def __init__(self, num_classes=10):
-        super().__init__()
-
-        # raw_delta: クラス間角度間隔の原パラメータ（学習可能）
-        # C個のギャップ全てを学習し、mu[0]=0 固定で回転の自由度を除去
-        # 初期値 0 → softplus(0) = log(2) で全ギャップ等値 → 等間隔スタート
-        self.raw_delta = nn.Parameter(torch.zeros(num_classes))
-
-    def get_mu(self):
-        delta = F.softplus(self.raw_delta)              # (C,) 全ギャップ
-        total = delta.sum()
-        cumsum = torch.cumsum(delta, dim=0)             # (C,)
-        # mu[0]=0 固定、mu[c] = cumsum[c-1]/total * 2π
-        mu = torch.cat([
-            torch.zeros(1, device=delta.device),
-            2.0 * np.pi * cumsum[:-1] / total
-        ])
-        return mu
-
-    def forward(self, z):
-        """
-        Args:
-            z: CNNの出力スカラー (batch, 1)
-        Returns:
-            logits: クラスロジット (batch, num_classes)
-        """
-        mu = self.get_mu()
-        # z: (batch, 1), mu: (num_classes,) → broadcasting で (batch, num_classes)
-        logits = torch.cos(z - mu.unsqueeze(0))
-
-        return logits
